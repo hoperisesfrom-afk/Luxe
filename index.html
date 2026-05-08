@@ -234,6 +234,15 @@ select option{background:#1c1c1c}
   </div>
   <div class="lock-err" id="lock-err"></div>
   <div class="lock-hint" id="lock-hint">Enter PIN to access</div>
+  <div style="margin-top:28px;">
+    <button onclick="showPinReset()" style="background:none;border:none;color:var(--t3);font-size:11px;cursor:pointer;text-decoration:underline;">Forgot PIN?</button>
+  </div>
+  <div id="pin-reset-box" style="display:none;margin-top:16px;width:100%;max-width:280px;background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);padding:16px;text-align:left;">
+    <div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Enter your Supabase anon key last 6 chars to reset PIN to 1234:</div>
+    <input id="reset-code" type="text" maxlength="6" placeholder="last 6 chars of API key" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--b);border-radius:var(--rs);background:var(--s3);color:var(--t);outline:none;margin-bottom:10px;letter-spacing:2px;">
+    <button onclick="tryPinReset()" style="width:100%;padding:10px;background:var(--gold);color:#0a0a0a;border:none;border-radius:var(--rs);font-weight:700;cursor:pointer;font-size:13px;">Reset PIN</button>
+    <div id="reset-err" style="color:var(--err);font-size:12px;margin-top:8px;min-height:16px;"></div>
+  </div>
 </div>
 
 <!-- ══ CHANGE PIN MODAL ══ -->
@@ -1508,6 +1517,29 @@ function unlockApp() {
       }, 800);
     }).catch(function() {});
   }
+}
+
+function showPinReset() {
+  var box = document.getElementById('pin-reset-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+function tryPinReset() {
+  var code = (document.getElementById('reset-code').value || '').trim();
+  // Verify using last 6 chars of the Supabase anon key
+  var keyEnd = KEY.slice(-6);
+  var err = document.getElementById('reset-err');
+  if (code !== keyEnd) {
+    err.textContent = 'Incorrect code. Check your Supabase key.';
+    return;
+  }
+  appPin = '1234';
+  localStorage.setItem('llpin', '1234');
+  document.getElementById('pin-reset-box').style.display = 'none';
+  document.getElementById('reset-code').value = '';
+  err.textContent = '';
+  document.getElementById('lock-hint').textContent = 'PIN reset to 1234 — enter it now';
+  document.getElementById('lock-err').textContent = '';
 }
 
 function lockPress(k) {
