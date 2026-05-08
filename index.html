@@ -168,6 +168,14 @@ select option{background:#1c1c1c}
 .cust-card:active{background:var(--s3);}
 .cust-avatar{width:40px;height:40px;border-radius:50%;background:var(--gold-bg);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:var(--gold);flex-shrink:0;}
 .debt-badge{background:var(--err-bg);color:var(--err);border:1px solid rgba(224,96,96,.3);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;}
+.pay-panel{background:var(--s3);border:1px solid var(--b2);border-radius:var(--rs);padding:14px;margin-top:10px;display:none;}
+.pay-panel.on{display:block;}
+.pay-method-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0 12px;}
+.pmt-btn{padding:10px 6px;border:1px solid var(--b);border-radius:var(--rs);background:var(--s2);font-size:12px;font-weight:600;cursor:pointer;color:var(--t);text-align:center;}
+.pmt-btn.sel{background:var(--gold-bg);border-color:var(--gold);color:var(--gold);}
+.payment-log{margin-top:10px;}
+.plog-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b);font-size:12px;}
+.plog-row:last-child{border-bottom:none;}
 .cust-detail-overlay{position:fixed;inset:0;background:var(--s);z-index:900;display:none;flex-direction:column;overflow:hidden;}
 .cust-detail-overlay.on{display:flex;}
 .cust-detail-header{background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
@@ -521,6 +529,7 @@ select option{background:#1c1c1c}
       <div class="sc"><div class="sl">Last Visit</div><div class="sv" id="cd-last" style="font-size:13px;color:var(--t)">—</div></div>
     </div>
     <div id="cd-debt-actions" style="display:none;margin-bottom:12px;"></div>
+    <div id="cd-payment-log" style="display:none;margin-bottom:16px;"></div>
     <div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:10px;">Purchase History</div>
     <div id="cd-history"></div>
   </div>
@@ -1200,35 +1209,75 @@ function filterCustomers() {
   el.innerHTML = html;
 }
 
+var _cdSales = [], _cdPayMethod = 'Cash';
+
 function openCustDetail(name) {
-  var sales = allCustomerSales.filter(function(s) { return s.customer_name === name; })
+  _cdSales = allCustomerSales.filter(function(s) { return s.customer_name === name; })
     .sort(function(a, b) { return b.date.localeCompare(a.date); });
-  var totalSpent = sales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
-  var balance = sales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
-  var lastDate = sales.length ? sales[0].date : '—';
+  var orderTotal = _cdSales.reduce(function(s, x) { return s + (x.total || 0); }, 0);
+  var totalPaid  = _cdSales.reduce(function(s, x) { return s + (x.paid  || 0); }, 0);
+  var balance    = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
+  var lastDate   = _cdSales.length ? _cdSales[0].date : '—';
+
   document.getElementById('cd-avatar').textContent = name.charAt(0).toUpperCase();
   document.getElementById('cd-name').textContent = name;
-  document.getElementById('cd-meta').textContent = sales.length + ' purchases';
-  document.getElementById('cd-total').textContent = fmt(totalSpent);
-  document.getElementById('cd-visits').textContent = sales.length;
+  document.getElementById('cd-meta').textContent = _cdSales.length + ' purchase' + (_cdSales.length !== 1 ? 's' : '');
+  document.getElementById('cd-total').textContent = fmt(orderTotal);
+  document.getElementById('cd-visits').textContent = _cdSales.length;
   var balEl = document.getElementById('cd-balance');
   balEl.textContent = fmt(balance);
   balEl.style.color = balance > 0 ? 'var(--err)' : 'var(--ok)';
   document.getElementById('cd-last').textContent = lastDate;
-  // Debt actions
+
+  // ── Payment log (history of partial payments) ──
+  var plEl = document.getElementById('cd-payment-log');
+  if (_cdSales.some(function(s) { return s.payment_log && s.payment_log.length; })) {
+    var logs = [];
+    _cdSales.forEach(function(s) {
+      (s.payment_log || []).forEach(function(p) { logs.push(p); });
+    });
+    logs.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    var lhtml = '<div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:8px;">Payment History</div>';
+    lhtml += '<div class="payment-log">';
+    logs.forEach(function(p) {
+      lhtml += '<div class="plog-row"><div><span style="font-weight:600;">' + fmt(p.amount) + '</span> <span class="chip" style="font-size:10px;">' + p.method + '</span></div><span style="color:var(--t2);">' + p.date + '</span></div>';
+    });
+    lhtml += '</div>';
+    plEl.innerHTML = lhtml;
+    plEl.style.display = 'block';
+  } else { plEl.style.display = 'none'; }
+
+  // ── Debt actions ──
   var da = document.getElementById('cd-debt-actions');
   if (balance > 0) {
-    var ids = sales.filter(function(s) { return s.balance > 0; }).map(function(s) { return s.id; }).join(',');
+    var debtSaleIds = _cdSales.filter(function(s) { return (s.balance || 0) > 0; }).map(function(s) { return s.id; });
+    _cdPayMethod = 'Cash';
     da.style.display = 'block';
-    da.innerHTML = '<div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--rs);padding:12px;margin-bottom:8px;">'
-      + '<div style="font-size:12px;color:var(--err);font-weight:700;margin-bottom:8px;">&#9888; Outstanding Balance: ' + fmt(balance) + '</div>'
-      + '<button class="btn bok-btn bsm" onclick="markFullyPaid(' + JSON.stringify(ids) + ',' + Math.round(balance) + ');closeCustDetail()">&#10003; Mark Fully Paid</button></div>';
+    da.innerHTML =
+      '<div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--rs);padding:14px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+          '<div style="font-size:12px;color:var(--err);font-weight:700;">&#9888; Outstanding: ' + fmt(balance) + '</div>' +
+          '<button class="btn bsm bok-btn" style="width:auto;padding:6px 12px;" onclick="cdMarkFullyPaid()">&#10003; All Paid</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">Record a payment:</div>' +
+        '<input id="cd-pay-amt" type="number" placeholder="Amount (KES)" style="margin-bottom:10px;">' +
+        '<div class="pay-method-grid">' +
+          '<div class="pmt-btn sel" onclick="cdSelMethod(this,\'Cash\')">Cash</div>' +
+          '<div class="pmt-btn" onclick="cdSelMethod(this,\'M-Pesa\')">M-Pesa</div>' +
+          '<div class="pmt-btn" onclick="cdSelMethod(this,\'Card\')">Card</div>' +
+        '</div>' +
+        '<button class="btn bp bsm" id="cd-pay-btn" onclick="cdRecordPayment()">Record Payment</button>' +
+      '</div>';
+    // store ids for payment
+    da._saleIds = debtSaleIds;
   } else {
     da.style.display = 'none';
+    da.innerHTML = '';
   }
-  // History
+
+  // ── Purchase history ──
   var html = '';
-  sales.forEach(function(s) {
+  _cdSales.forEach(function(s) {
     var its = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
     html += '<div class="sale-card" style="margin-bottom:8px;">';
     html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
@@ -1237,11 +1286,71 @@ function openCustDetail(name) {
     html += '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">' + its + '</div>';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
     html += '<span class="chip">' + s.method + '</span>';
-    html += '<span style="font-size:12px;font-weight:700;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' + (s.balance > 0 ? 'Owes ' + fmt(s.balance) : 'Paid') + '</span>';
+    html += '<span style="font-size:12px;font-weight:700;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' +
+      (s.balance > 0 ? 'Owes ' + fmt(s.balance) : '&#10003; Paid') + '</span>';
     html += '</div></div>';
   });
   document.getElementById('cd-history').innerHTML = html || '<div class="empty">No purchases</div>';
   document.getElementById('cust-detail-overlay').classList.add('on');
+}
+
+function cdSelMethod(el, m) {
+  el.closest('.pay-method-grid').querySelectorAll('.pmt-btn').forEach(function(b) { b.classList.remove('sel'); });
+  el.classList.add('sel');
+  _cdPayMethod = m;
+}
+
+function cdRecordPayment() {
+  var amt = parseFloat(document.getElementById('cd-pay-amt').value);
+  if (isNaN(amt) || amt <= 0) { toast('Enter a valid amount', 'err'); return; }
+  var da = document.getElementById('cd-debt-actions');
+  var ids = da._saleIds || [];
+  if (!ids.length) return;
+  var btn = document.getElementById('cd-pay-btn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  var today = new Date().toISOString().slice(0, 10);
+  var method = _cdPayMethod;
+  // Fetch all debt sales and distribute payment oldest-first
+  dbGet('sales', '?id=in.(' + ids.join(',') + ')&order=date.asc').then(function(sales) {
+    var rem = amt, ps = [];
+    sales.forEach(function(s) {
+      if (rem <= 0 || (s.balance || 0) <= 0) return;
+      var pay = Math.min(rem, s.balance);
+      var newPaid = (s.paid || 0) + pay;
+      var newBal  = Math.round((s.balance - pay) * 100) / 100;
+      // Append to payment_log
+      var log = s.payment_log || [];
+      log.push({amount: pay, method: method, date: today});
+      ps.push(dbPatch('sales', {paid: newPaid, balance: newBal, payment_log: log}, '?id=eq.' + s.id));
+      rem -= pay;
+    });
+    return Promise.all(ps);
+  }).then(function() {
+    toast(fmt(amt) + ' via ' + method + ' recorded ✓', 'ok');
+    allCustomerSales = [];
+    loadCustomers();
+    closeCustDetail();
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
+  .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
+}
+
+function cdMarkFullyPaid() {
+  var da = document.getElementById('cd-debt-actions');
+  var ids = da._saleIds || [];
+  var custName = document.getElementById('cd-name').textContent;
+  var balance = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
+  if (!confirm('Mark ' + custName + ' as fully paid?\nTotal cleared: ' + fmt(balance))) return;
+  dbGet('sales', '?id=in.(' + ids.join(',') + ')').then(function(sales) {
+    var today = new Date().toISOString().slice(0, 10);
+    var ps = sales.map(function(s) {
+      var log = s.payment_log || [];
+      if (s.balance > 0) log.push({amount: s.balance, method: 'Cash', date: today});
+      return dbPatch('sales', {paid: s.total, balance: 0, payment_log: log}, '?id=eq.' + s.id);
+    });
+    return Promise.all(ps);
+  }).then(function() {
+    toast('Fully paid ✓', 'ok'); allCustomerSales = []; loadCustomers(); closeCustDetail();
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
 function closeCustDetail() {
@@ -1249,19 +1358,6 @@ function closeCustDetail() {
 }
 
 function loadDebt() { loadCustomers(); }
-
-function markFullyPaid(idsStr, total) {
-  if (!confirm('Mark all debts for this customer as fully paid?\nTotal: ' + fmt(total))) return;
-  var ids = idsStr.split(',').map(Number).filter(Boolean);
-  dbGet('sales', '?id=in.(' + ids.join(',') + ')').then(function(sales) {
-    var ps = sales.map(function(s) {
-      return dbPatch('sales', {paid: s.total, balance: 0}, '?id=eq.' + s.id);
-    });
-    return Promise.all(ps);
-  }).then(function() {
-    toast('Marked as fully paid', 'ok'); allCustomerSales = []; loadCustomers();
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
 
 function selDM(el, key, m) {
   el.closest('.mg').querySelectorAll('.mb').forEach(function(b) { b.classList.remove('sel'); });
