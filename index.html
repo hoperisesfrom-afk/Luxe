@@ -163,10 +163,75 @@ select option{background:#1c1c1c}
 .split-panel.on{display:block;}
 .edit-sale-panel{background:var(--s3);border:1px solid var(--b2);border-radius:var(--rs);padding:14px;margin-top:10px;display:none;}
 .edit-sale-panel.on{display:block;}
+/* ── App Lock ── */
+.app-lock{position:fixed;inset:0;background:#0a0a0a;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 20px;transition:opacity .2s;}
+.app-lock.hidden{display:none;}
+.lock-logo{font-size:36px;font-weight:800;font-style:italic;color:var(--gold);letter-spacing:.5px;margin-bottom:4px;}
+.lock-sub{font-size:10px;color:var(--t2);letter-spacing:3px;text-transform:uppercase;margin-bottom:40px;}
+.lock-dots{display:flex;gap:16px;justify-content:center;margin-bottom:28px;}
+.lock-pd{width:16px;height:16px;border-radius:50%;border:2px solid var(--b2);background:transparent;transition:all .15s;}
+.lock-pd.on{background:var(--gold);border-color:var(--gold);}
+.lock-ppad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:280px;width:100%;}
+.lock-pk{padding:20px;border:1px solid var(--b);border-radius:var(--rs);background:var(--s2);font-size:24px;font-weight:600;cursor:pointer;color:var(--t);text-align:center;}
+.lock-pk:active{background:var(--gold-bg);border-color:var(--gold);color:var(--gold);}
+.lock-err{color:var(--err);font-size:13px;margin-top:12px;min-height:20px;font-weight:600;text-align:center;}
+.lock-hint{color:var(--t3);font-size:11px;margin-top:16px;text-align:center;}
+/* ── Change PIN Modal ── */
+.cpmodal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10001;display:none;align-items:center;justify-content:center;padding:24px;}
+.cpmodal.on{display:flex;}
+.cpbox{background:var(--s);border:1px solid var(--b);border-radius:var(--r);padding:24px;width:100%;max-width:340px;}
+.cpbox label{margin-bottom:6px;}
+.cpbox input{margin-bottom:12px;letter-spacing:6px;text-align:center;font-size:20px;}
 
 </style>
 </head>
 <body>
+
+<!-- ══ APP LOCK SCREEN ══ -->
+<div class="app-lock" id="app-lock">
+  <div class="lock-logo">Liz Luxe</div>
+  <div class="lock-sub">Point of Sale</div>
+  <div class="lock-dots">
+    <div class="lock-pd" id="lpd0"></div><div class="lock-pd" id="lpd1"></div>
+    <div class="lock-pd" id="lpd2"></div><div class="lock-pd" id="lpd3"></div>
+  </div>
+  <div class="lock-ppad">
+    <button class="lock-pk" onclick="lockPress('1')">1</button>
+    <button class="lock-pk" onclick="lockPress('2')">2</button>
+    <button class="lock-pk" onclick="lockPress('3')">3</button>
+    <button class="lock-pk" onclick="lockPress('4')">4</button>
+    <button class="lock-pk" onclick="lockPress('5')">5</button>
+    <button class="lock-pk" onclick="lockPress('6')">6</button>
+    <button class="lock-pk" onclick="lockPress('7')">7</button>
+    <button class="lock-pk" onclick="lockPress('8')">8</button>
+    <button class="lock-pk" onclick="lockPress('9')">9</button>
+    <button class="lock-pk" onclick="lockPress('back')" style="font-size:18px;">&#9003;</button>
+    <button class="lock-pk" onclick="lockPress('0')">0</button>
+    <button class="lock-pk" onclick="lockPress('clear')" style="font-size:12px;">CLR</button>
+  </div>
+  <div class="lock-err" id="lock-err"></div>
+  <div class="lock-hint" id="lock-hint">Enter PIN to access</div>
+</div>
+
+<!-- ══ CHANGE PIN MODAL ══ -->
+<div class="cpmodal" id="cpmodal">
+  <div class="cpbox">
+    <div style="font-size:16px;font-weight:700;color:var(--gold);margin-bottom:20px;text-align:center;">&#128274; Change PIN</div>
+    <label>Current PIN</label>
+    <input type="password" inputmode="numeric" maxlength="4" id="cp-cur" placeholder="••••">
+    <label>New PIN</label>
+    <input type="password" inputmode="numeric" maxlength="4" id="cp-new" placeholder="••••">
+    <label>Confirm New PIN</label>
+    <input type="password" inputmode="numeric" maxlength="4" id="cp-con" placeholder="••••">
+    <div class="lock-err" id="cp-err" style="margin-bottom:12px;min-height:18px;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn bp" onclick="saveNewPin()" style="flex:2;">Save PIN</button>
+      <button class="btn" onclick="closeCpModal()" style="flex:1;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MAIN APP ══ -->
 <div class="shell">
   <div class="topbar">
     <div><div class="logo-name">Liz Luxe</div><div class="logo-sub">Point of Sale</div></div>
@@ -309,7 +374,7 @@ select option{background:#1c1c1c}
         <div class="divider">Transaction Log</div>
         <div class="card"><div id="fin-log"><div class="empty">No transactions yet</div></div></div>
         <div style="display:flex;gap:8px;margin-top:4px;">
-          <button class="btn bsm" onclick="changePin()" style="flex:1;">Change PIN</button>
+          <button class="btn bsm" onclick="openCpModal()" style="flex:1;">Change PIN</button>
           <button class="btn bsm bd" onclick="lockFin()" style="flex:1;">Lock</button>
         </div>
       </div>
@@ -419,7 +484,6 @@ var inv = [], cart = [], payMethod = 'Cash', pin = '', storedPin = '1234';
 var dateFilter = 'today';
 var finOpen = false, dMethods = {}, allSales = [], activeCat = 'All';
 var splitMode = false;
-
 function fmt(n) { return 'KES ' + Math.round(n || 0).toLocaleString(); }
 
 function toast(msg, type) {
@@ -1125,12 +1189,103 @@ function addInjection() {
 }
 
 function lockFin() { finOpen = false; pin = ''; renderFin(); }
-function changePin() {
-  var np = prompt('New 4-digit PIN:'); if (!np) return;
-  if (/^[0-9]{4}$/.test(np)) { storedPin = np; toast('PIN updated', 'ok'); }
-  else toast('Must be exactly 4 digits', 'err');
+
+// ── App Lock System ──
+var appPin = localStorage.getItem('llpin') || '1234';
+var lockPin = '';
+var lockTimer = null;
+var LOCK_MS = 5 * 60 * 1000; // 5 minutes
+
+function resetLockTimer() {
+  clearTimeout(lockTimer);
+  lockTimer = setTimeout(lockApp, LOCK_MS);
 }
 
+function lockApp() {
+  clearTimeout(lockTimer);
+  lockPin = '';
+  for (var i = 0; i < 4; i++) document.getElementById('lpd' + i).classList.remove('on');
+  document.getElementById('lock-err').textContent = '';
+  document.getElementById('lock-hint').textContent = 'Enter PIN to access';
+  document.getElementById('app-lock').classList.remove('hidden');
+  // Also lock finance if open
+  finOpen = false;
+}
+
+function unlockApp() {
+  document.getElementById('app-lock').classList.add('hidden');
+  resetLockTimer();
+  loadInv();
+}
+
+function lockPress(k) {
+  if (k === 'back') lockPin = lockPin.slice(0, -1);
+  else if (k === 'clear') lockPin = '';
+  else if (lockPin.length < 4) lockPin += k;
+  for (var i = 0; i < 4; i++) document.getElementById('lpd' + i).classList.toggle('on', i < lockPin.length);
+  document.getElementById('lock-err').textContent = '';
+  if (lockPin.length === 4) {
+    if (lockPin === appPin) {
+      unlockApp();
+    } else {
+      document.getElementById('lock-err').textContent = 'Incorrect PIN. Try again.';
+      setTimeout(function() {
+        lockPin = '';
+        for (var j = 0; j < 4; j++) document.getElementById('lpd' + j).classList.remove('on');
+      }, 800);
+    }
+  }
+}
+
+// Lock on phone screen off / visibility hidden for > 5 min
+var hiddenAt = null;
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    hiddenAt = Date.now();
+    clearTimeout(lockTimer);
+  } else {
+    if (hiddenAt && (Date.now() - hiddenAt) >= LOCK_MS) {
+      lockApp();
+    } else {
+      resetLockTimer();
+    }
+    hiddenAt = null;
+  }
+});
+
+// Reset timer on any user interaction
+['touchstart','mousedown','keydown','scroll'].forEach(function(ev) {
+  document.addEventListener(ev, function() {
+    if (!document.getElementById('app-lock').classList.contains('hidden')) return;
+    resetLockTimer();
+  }, {passive: true});
+});
+
+// ── Change PIN Modal ──
+function openCpModal() {
+  document.getElementById('cp-cur').value = '';
+  document.getElementById('cp-new').value = '';
+  document.getElementById('cp-con').value = '';
+  document.getElementById('cp-err').textContent = '';
+  document.getElementById('cpmodal').classList.add('on');
+}
+function closeCpModal() { document.getElementById('cpmodal').classList.remove('on'); }
+
+function saveNewPin() {
+  var cur = document.getElementById('cp-cur').value.trim();
+  var nw = document.getElementById('cp-new').value.trim();
+  var con = document.getElementById('cp-con').value.trim();
+  var err = document.getElementById('cp-err');
+  if (cur !== appPin) { err.textContent = 'Current PIN is incorrect'; return; }
+  if (!/^[0-9]{4}$/.test(nw)) { err.textContent = 'New PIN must be exactly 4 digits'; return; }
+  if (nw !== con) { err.textContent = 'PINs do not match'; return; }
+  appPin = nw;
+  localStorage.setItem('llpin', nw);
+  closeCpModal();
+  toast('PIN updated successfully', 'ok');
+}
+
+// Finance PIN (separate from app PIN — reuses same appPin for simplicity)
 function pinPress(k) {
   if (k === 'back') pin = pin.slice(0, -1);
   else if (k === 'clear') pin = '';
@@ -1138,7 +1293,7 @@ function pinPress(k) {
   for (var i = 0; i < 4; i++) document.getElementById('pd' + i).classList.toggle('on', i < pin.length);
   document.getElementById('pin-err').textContent = '';
   if (pin.length === 4) {
-    if (pin === storedPin) {
+    if (pin === appPin) {
       finOpen = true; pin = '';
       for (var j = 0; j < 4; j++) document.getElementById('pd' + j).classList.remove('on');
       renderFin();
@@ -1201,8 +1356,10 @@ function fallbackCopy(text) {
   document.body.removeChild(ta);
 }
 
-loadInv();
+// App starts locked — unlock triggers loadInv
 initDate();
+// Show lock hint with saved PIN info
+document.getElementById('lock-hint').textContent = appPin === '1234' ? 'Default PIN: 1234' : 'Enter your PIN';
 
 // PWA: Service Worker for offline caching
 if ('serviceWorker' in navigator) {
@@ -1268,4 +1425,4 @@ window.addEventListener('appinstalled', function() {
 });
 </script>
 </body>
-                                                                                                                       </html>
+</html>
