@@ -168,10 +168,10 @@ select option{background:#1c1c1c}
 .cust-card:active{background:var(--s3);}
 .cust-avatar{width:40px;height:40px;border-radius:50%;background:var(--gold-bg);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:var(--gold);flex-shrink:0;}
 .debt-badge{background:var(--err-bg);color:var(--err);border:1px solid rgba(224,96,96,.3);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;}
-.cust-detail-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:800;display:none;flex-direction:column;}
+.cust-detail-overlay{position:fixed;inset:0;background:var(--s);z-index:900;display:none;flex-direction:column;overflow:hidden;}
 .cust-detail-overlay.on{display:flex;}
-.cust-detail-header{background:var(--s);border-bottom:1px solid var(--b);padding:16px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
-.cust-detail-body{flex:1;overflow-y:auto;padding:16px;}
+.cust-detail-header{background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
+.cust-detail-body{flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch;}
 /* ── Finance Date Filter ── */
 .fin-date-pills{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;}
 .fin-date-pills::-webkit-scrollbar{display:none;}
@@ -234,15 +234,6 @@ select option{background:#1c1c1c}
   </div>
   <div class="lock-err" id="lock-err"></div>
   <div class="lock-hint" id="lock-hint">Enter PIN to access</div>
-  <div style="margin-top:28px;">
-    <button onclick="showPinReset()" style="background:none;border:none;color:var(--t3);font-size:11px;cursor:pointer;text-decoration:underline;">Forgot PIN?</button>
-  </div>
-  <div id="pin-reset-box" style="display:none;margin-top:16px;width:100%;max-width:280px;background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);padding:16px;text-align:left;">
-    <div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Enter your Supabase anon key last 6 chars to reset PIN to 1234:</div>
-    <input id="reset-code" type="text" maxlength="6" placeholder="last 6 chars of API key" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--b);border-radius:var(--rs);background:var(--s3);color:var(--t);outline:none;margin-bottom:10px;letter-spacing:2px;">
-    <button onclick="tryPinReset()" style="width:100%;padding:10px;background:var(--gold);color:#0a0a0a;border:none;border-radius:var(--rs);font-weight:700;cursor:pointer;font-size:13px;">Reset PIN</button>
-    <div id="reset-err" style="color:var(--err);font-size:12px;margin-top:8px;min-height:16px;"></div>
-  </div>
 </div>
 
 <!-- ══ CHANGE PIN MODAL ══ -->
@@ -1170,10 +1161,10 @@ function filterCustomers() {
   var q = (document.getElementById('cust-search').value || '').toLowerCase();
   var map = {};
   allCustomerSales.forEach(function(s) {
-    var n = (s.customer_name && s.customer_name.trim()) ? s.customer_name.trim() : 'Walk-in';
-    if (!map[n]) map[n] = {sales: [], totalSpent: 0, balance: 0, lastDate: '', rawName: s.customer_name};
+    var n = s.customer_name || 'Walk-in';
+    if (!map[n]) map[n] = {sales: [], totalSpent: 0, balance: 0, lastDate: ''};
     map[n].sales.push(s);
-    map[n].totalSpent += s.paid || 0;
+    map[n].totalSpent += s.total || 0;
     map[n].balance += s.balance || 0;
     if (!map[n].lastDate || s.date > map[n].lastDate) map[n].lastDate = s.date;
   });
@@ -1184,22 +1175,25 @@ function filterCustomers() {
   }).sort(function(a, b) { return map[b].totalSpent - map[a].totalSpent; });
   var el = document.getElementById('cust-list');
   if (!keys.length) { el.innerHTML = '<div class="empty">No customers found</div>'; return; }
+  // Store map on window for onclick access
+  window._custMap = map;
   var html = '';
-  keys.forEach(function(name) {
+  keys.forEach(function(name, idx) {
     var c = map[name];
     var initial = name.charAt(0).toUpperCase();
     var hasDebt = c.balance > 0;
-    html += '<div class="cust-card" onclick="openCustDetail(' + JSON.stringify(name) + ')">';
+    var safeName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    html += '<div class="cust-card" onclick="openCustDetail(\'' + safeName + '\')">';
     html += '<div style="display:flex;align-items:center;gap:12px;">';
     html += '<div class="cust-avatar">' + initial + '</div>';
     html += '<div style="flex:1;">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap;">';
     html += '<span style="font-weight:700;font-size:15px;">' + name + '</span>';
     if (hasDebt) html += '<span class="debt-badge">Owes ' + fmt(c.balance) + '</span>';
     html += '</div>';
     html += '<div style="font-size:12px;color:var(--t2);">' + c.sales.length + ' purchase' + (c.sales.length !== 1 ? 's' : '') + ' &middot; Last: ' + (c.lastDate || '—') + '</div>';
     html += '</div>';
-    html += '<div style="text-align:right;"><div style="font-size:15px;font-weight:800;color:var(--gold);">' + fmt(c.totalSpent) + '</div>';
+    html += '<div style="text-align:right;flex-shrink:0;"><div style="font-size:15px;font-weight:800;color:var(--gold);">' + fmt(c.totalSpent) + '</div>';
     html += '<div style="font-size:10px;color:var(--t2);">total spent</div></div>';
     html += '</div></div>';
   });
@@ -1207,11 +1201,8 @@ function filterCustomers() {
 }
 
 function openCustDetail(name) {
-  var isWalkin = (name === 'Walk-in');
-  var sales = allCustomerSales.filter(function(s) {
-    var sName = (s.customer_name && s.customer_name.trim()) ? s.customer_name.trim() : 'Walk-in';
-    return sName === name;
-  }).sort(function(a, b) { return b.date.localeCompare(a.date); });
+  var sales = allCustomerSales.filter(function(s) { return s.customer_name === name; })
+    .sort(function(a, b) { return b.date.localeCompare(a.date); });
   var totalSpent = sales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
   var balance = sales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
   var lastDate = sales.length ? sales[0].date : '—';
@@ -1227,26 +1218,11 @@ function openCustDetail(name) {
   // Debt actions
   var da = document.getElementById('cd-debt-actions');
   if (balance > 0) {
-    var debtSales = sales.filter(function(s) { return s.balance > 0; });
-    var ids = debtSales.map(function(s) { return s.id; }).join(',');
+    var ids = sales.filter(function(s) { return s.balance > 0; }).map(function(s) { return s.id; }).join(',');
     da.style.display = 'block';
-    da.innerHTML =
-      '<div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--rs);padding:14px;margin-bottom:8px;">' +
-      '<div style="font-size:13px;color:var(--err);font-weight:800;margin-bottom:12px;">&#9888; Outstanding Balance: ' + fmt(balance) + '</div>' +
-      '<label>Payment Method</label>' +
-      '<div class="mg" id="debt-pay-methods" style="margin-bottom:10px;">' +
-      '<div class="mb sel" onclick="selDebtMethod(this,\'Cash\')">Cash</div>' +
-      '<div class="mb" onclick="selDebtMethod(this,\'M-Pesa\')">M-Pesa</div>' +
-      '<div class="mb" onclick="selDebtMethod(this,\'Card\')">Card</div>' +
-      '</div>' +
-      '<label>Amount Paying (KES)</label>' +
-      '<input id="debt-pay-amt" type="number" placeholder="Enter amount" style="margin-bottom:10px;" oninput="updateDebtChange(' + Math.round(balance) + ')">' +
-      '<div id="debt-change-line" style="display:none;padding:8px 12px;border-radius:var(--rs);margin-bottom:10px;"><span id="debt-change-lbl" style="font-size:13px;font-weight:700;"></span></div>' +
-      '<div style="display:flex;gap:8px;">' +
-      '<button class="btn bok-btn" id="debt-pay-btn" onclick="recordDebtPayment(\'' + ids + '\',' + Math.round(balance) + ')" style="flex:2;">&#10003; Record Payment</button>' +
-      '<button class="btn bsm" onclick="quickMarkPaid(\'' + ids + '\',' + Math.round(balance) + ')" style="flex:1;font-size:11px;">Full Pay</button>' +
-      '</div>' +
-      '</div>';
+    da.innerHTML = '<div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--rs);padding:12px;margin-bottom:8px;">'
+      + '<div style="font-size:12px;color:var(--err);font-weight:700;margin-bottom:8px;">&#9888; Outstanding Balance: ' + fmt(balance) + '</div>'
+      + '<button class="btn bok-btn bsm" onclick="markFullyPaid(' + JSON.stringify(ids) + ',' + Math.round(balance) + ');closeCustDetail()">&#10003; Mark Fully Paid</button></div>';
   } else {
     da.style.display = 'none';
   }
@@ -1254,20 +1230,16 @@ function openCustDetail(name) {
   var html = '';
   sales.forEach(function(s) {
     var its = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
-    var hasDebt = s.balance > 0;
-    html += '<div class="sale-card" style="margin-bottom:8px;' + (hasDebt ? 'border-color:rgba(224,96,96,.3);' : '') + '">';
+    html += '<div class="sale-card" style="margin-bottom:8px;">';
     html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
     html += '<span style="font-size:12px;color:var(--t2);">' + s.date + '</span>';
     html += '<span style="font-weight:800;color:var(--gold);">' + fmt(s.total) + '</span></div>';
-    html += '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">' + (its || '—') + '</div>';
+    html += '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">' + its + '</div>';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
     html += '<span class="chip">' + s.method + '</span>';
-    if (hasDebt) {
-      html += '<span style="font-size:12px;font-weight:700;color:var(--err);">Owes ' + fmt(s.balance) + '</span>';
-    } else {
-      html += '<span style="font-size:12px;font-weight:700;color:var(--ok);">&#10003; Paid</span>';
-    }
+    html += '<span style="font-size:12px;font-weight:700;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' + (s.balance > 0 ? 'Owes ' + fmt(s.balance) : 'Paid') + '</span>';
     html += '</div></div>';
+  });
   document.getElementById('cd-history').innerHTML = html || '<div class="empty">No purchases</div>';
   document.getElementById('cust-detail-overlay').classList.add('on');
 }
@@ -1276,63 +1248,10 @@ function closeCustDetail() {
   document.getElementById('cust-detail-overlay').classList.remove('on');
 }
 
-var _debtPayMethod = 'Cash';
-function selDebtMethod(el, m) {
-  _debtPayMethod = m;
-  document.querySelectorAll('#debt-pay-methods .mb').forEach(function(b) { b.classList.remove('sel'); });
-  el.classList.add('sel');
-}
-
-function updateDebtChange(balance) {
-  var amt = parseFloat(document.getElementById('debt-pay-amt').value) || 0;
-  var cl = document.getElementById('debt-change-line');
-  var lbl = document.getElementById('debt-change-lbl');
-  if (!amt) { cl.style.display = 'none'; return; }
-  cl.style.display = 'block';
-  if (amt >= balance) {
-    cl.style.background = 'var(--ok-bg)';
-    lbl.style.color = 'var(--ok)';
-    lbl.textContent = amt > balance ? 'Change: ' + fmt(amt - balance) : '\u2713 Exact payment';
-  } else {
-    cl.style.background = 'var(--err-bg)';
-    lbl.style.color = 'var(--err)';
-    lbl.textContent = 'Partial \u2014 ' + fmt(balance - amt) + ' still owed';
-  }
-}
-
-function recordDebtPayment(idsStr, totalBalance) {
-  var amt = parseFloat(document.getElementById('debt-pay-amt').value);
-  if (isNaN(amt) || amt <= 0) { toast('Enter a valid amount', 'err'); return; }
-  var ids = idsStr.split(',').map(Number).filter(Boolean);
-  var btn = document.getElementById('debt-pay-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loader"></span>Saving...'; }
-  dbGet('sales', '?id=in.(' + ids.join(',') + ')&order=created_at.asc').then(function(sales) {
-    var rem = amt, ps = [];
-    sales.forEach(function(s) {
-      if (rem <= 0 || (s.balance || 0) <= 0) return;
-      var pay = Math.min(rem, s.balance);
-      ps.push(dbPatch('sales', {paid: (s.paid || 0) + pay, balance: Math.round((s.balance - pay) * 100) / 100}, '?id=eq.' + s.id));
-      rem -= pay;
-    });
-    return Promise.all(ps);
-  }).then(function() {
-    toast('Payment of ' + fmt(amt) + ' via ' + _debtPayMethod + ' recorded \u2713', 'ok');
-    allCustomerSales = [];
-    closeCustDetail();
-    loadCustomers();
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
-  .finally(function() { if (btn) { btn.disabled = false; btn.innerHTML = '\u2713 Record Payment'; } });
-}
-
-function quickMarkPaid(idsStr, total) {
-  if (!confirm('Mark entire balance of ' + fmt(total) + ' as fully paid?')) return;
-  markFullyPaid(idsStr, total, true);
-}
-
 function loadDebt() { loadCustomers(); }
 
-function markFullyPaid(idsStr, total, skipConfirm) {
-  if (!skipConfirm && !confirm('Mark all debts for this customer as fully paid?\nTotal: ' + fmt(total))) return;
+function markFullyPaid(idsStr, total) {
+  if (!confirm('Mark all debts for this customer as fully paid?\nTotal: ' + fmt(total))) return;
   var ids = idsStr.split(',').map(Number).filter(Boolean);
   dbGet('sales', '?id=in.(' + ids.join(',') + ')').then(function(sales) {
     var ps = sales.map(function(s) {
@@ -1340,7 +1259,7 @@ function markFullyPaid(idsStr, total, skipConfirm) {
     });
     return Promise.all(ps);
   }).then(function() {
-    toast('Marked as fully paid', 'ok'); allCustomerSales = []; closeCustDetail(); loadCustomers();
+    toast('Marked as fully paid', 'ok'); allCustomerSales = []; loadCustomers();
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
@@ -1517,29 +1436,6 @@ function unlockApp() {
       }, 800);
     }).catch(function() {});
   }
-}
-
-function showPinReset() {
-  var box = document.getElementById('pin-reset-box');
-  box.style.display = box.style.display === 'none' ? 'block' : 'none';
-}
-
-function tryPinReset() {
-  var code = (document.getElementById('reset-code').value || '').trim();
-  // Verify using last 6 chars of the Supabase anon key
-  var keyEnd = KEY.slice(-6);
-  var err = document.getElementById('reset-err');
-  if (code !== keyEnd) {
-    err.textContent = 'Incorrect code. Check your Supabase key.';
-    return;
-  }
-  appPin = '1234';
-  localStorage.setItem('llpin', '1234');
-  document.getElementById('pin-reset-box').style.display = 'none';
-  document.getElementById('reset-code').value = '';
-  err.textContent = '';
-  document.getElementById('lock-hint').textContent = 'PIN reset to 1234 — enter it now';
-  document.getElementById('lock-err').textContent = '';
 }
 
 function lockPress(k) {
