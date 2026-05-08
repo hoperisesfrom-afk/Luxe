@@ -163,29 +163,6 @@ select option{background:#1c1c1c}
 .split-panel.on{display:block;}
 .edit-sale-panel{background:var(--s3);border:1px solid var(--b2);border-radius:var(--rs);padding:14px;margin-top:10px;display:none;}
 .edit-sale-panel.on{display:block;}
-/* ── Customer Tab ── */
-.cust-card{background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:14px;margin-bottom:10px;cursor:pointer;}
-.cust-card:active{background:var(--s3);}
-.cust-avatar{width:40px;height:40px;border-radius:50%;background:var(--gold-bg);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:var(--gold);flex-shrink:0;}
-.debt-badge{background:var(--err-bg);color:var(--err);border:1px solid rgba(224,96,96,.3);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;}
-.cust-detail-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:800;display:none;flex-direction:column;}
-.cust-detail-overlay.on{display:flex;}
-.cust-detail-header{background:var(--s);border-bottom:1px solid var(--b);padding:16px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
-.cust-detail-body{flex:1;overflow-y:auto;padding:16px;}
-/* ── Finance Date Filter ── */
-.fin-date-pills{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;}
-.fin-date-pills::-webkit-scrollbar{display:none;}
-/* ── Daily Summary ── */
-.daily-summary{background:linear-gradient(135deg,rgba(201,151,42,.15),rgba(201,151,42,.05));border:1px solid var(--b2);border-radius:var(--r);padding:16px;margin-bottom:14px;}
-.daily-summary-title{font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
-.daily-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
-.daily-cell{text-align:center;}
-.daily-val{font-size:16px;font-weight:800;color:var(--gold);}
-.daily-lbl{font-size:10px;color:var(--t2);margin-top:2px;text-transform:uppercase;letter-spacing:.04em;}
-/* ── Receipt Ref & Share ── */
-.r-ref{text-align:center;font-size:11px;color:#999;margin-bottom:6px;font-family:monospace;letter-spacing:.5px;}
-.share-btn{display:block;width:100%;padding:11px;border-radius:8px;font-size:14px;cursor:pointer;border:none;background:#1a3a5c;color:#6aabf0;font-weight:700;text-align:center;margin-top:10px;font-family:inherit;}
-.share-btn:active{opacity:.8;}
 /* ── App Lock ── */
 .app-lock{position:fixed;inset:0;background:#0a0a0a;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 20px;transition:opacity .2s;}
 .app-lock.hidden{display:none;}
@@ -342,12 +319,7 @@ select option{background:#1c1c1c}
     </div>
 
     <div id="tab-debtors" class="tab">
-      <div class="g12"><input id="cust-search" placeholder="&#128269; Search customers..." oninput="filterCustomers()" style="background:var(--s2);border:1px solid var(--b);"></div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <button class="dpill active" id="cf-all" onclick="setCustFilter(this,'all')">All</button>
-        <button class="dpill" id="cf-debt" onclick="setCustFilter(this,'debt')">&#128308; Has Balance</button>
-      </div>
-      <div id="cust-list"><div class="empty">Loading...</div></div>
+      <div id="debt-list"><div class="empty">Loading...</div></div>
     </div>
 
     <div id="tab-finance" class="tab">
@@ -373,20 +345,6 @@ select option{background:#1c1c1c}
         </div>
       </div>
       <div id="fin-content" style="display:none;">
-        <div class="daily-summary" id="fin-daily">
-          <div class="daily-summary-title">&#9728; Today's Summary</div>
-          <div class="daily-grid">
-            <div class="daily-cell"><div class="daily-val" id="fd-rev">KES 0</div><div class="daily-lbl">Revenue</div></div>
-            <div class="daily-cell"><div class="daily-val" id="fd-pro" style="color:var(--ok)">KES 0</div><div class="daily-lbl">Profit</div></div>
-            <div class="daily-cell"><div class="daily-val" id="fd-cnt" style="color:var(--t)">0</div><div class="daily-lbl">Sales</div></div>
-          </div>
-        </div>
-        <div class="fin-date-pills">
-          <button class="dpill active" id="fp-all" onclick="setFinFilter(this,'all')">All Time</button>
-          <button class="dpill" onclick="setFinFilter(this,'today')">Today</button>
-          <button class="dpill" onclick="setFinFilter(this,'week')">This Week</button>
-          <button class="dpill" onclick="setFinFilter(this,'month')">This Month</button>
-        </div>
         <div class="sg">
           <div class="sc"><div class="sl">Revenue</div><div class="sv" id="f-rev" style="color:var(--gold)">KES 0</div></div>
           <div class="sc"><div class="sl">Profit</div><div class="sv" id="f-pro" style="color:var(--ok)">KES 0</div></div>
@@ -427,7 +385,7 @@ select option{background:#1c1c1c}
     <button class="bni active" data-tab="inventory" onclick="showTab('inventory',this)"><span class="bni-icon">&#128230;</span><span class="bni-label">Inventory</span></button>
     <button class="bni" data-tab="sales" onclick="showTab('sales',this)"><span class="bni-icon">&#128717;</span><span class="bni-label">New Sale</span><span class="dot" id="cart-dot"></span></button>
     <button class="bni" data-tab="history" onclick="showTab('history',this)"><span class="bni-icon">&#128203;</span><span class="bni-label">History</span></button>
-    <button class="bni" data-tab="debtors" onclick="showTab('debtors',this)"><span class="bni-icon">&#128100;</span><span class="bni-label">Customers</span><span class="dot" id="debt-dot"></span></button>
+    <button class="bni" data-tab="debtors" onclick="showTab('debtors',this)"><span class="bni-icon">&#128100;</span><span class="bni-label">Debtors</span><span class="dot" id="debt-dot"></span></button>
     <button class="bni" data-tab="finance" onclick="showTab('finance',this)"><span class="bni-icon">&#128176;</span><span class="bni-label">Finance</span></button>
   </nav>
 </div>
@@ -477,7 +435,6 @@ select option{background:#1c1c1c}
   <div class="receipt-paper">
     <div class="r-logo">Liz Luxe</div>
     <div class="r-tag">LUXURY &bull; BEAUTY &bull; STYLE</div>
-    <div class="r-ref" id="r-ref"></div>
     <hr class="r-div">
     <div id="r-details"></div>
     <hr class="r-div">
@@ -486,8 +443,7 @@ select option{background:#1c1c1c}
     <div class="r-foot">Thank you for shopping with</div>
     <div class="r-thank">&#10022; Liz Luxe &#10022;</div>
     <div id="r-date" style="text-align:center;font-size:11px;color:#aaa;margin-top:8px;"></div>
-    <button class="share-btn" onclick="shareReceipt()">&#128279; Share Receipt</button>
-    <button class="btn" onclick="copyReceipt()" style="margin-top:8px;background:#e8f5e9;color:#2e7d32;border:none;font-family:inherit;">&#128203; Copy Receipt</button>
+    <button class="btn" onclick="copyReceipt()" style="margin-top:10px;background:#e8f5e9;color:#2e7d32;border:none;font-family:inherit;">&#128203; Copy Receipt</button>
     <button class="btn" onclick="closeReceipt()" style="margin-top:8px;background:#f5f5f5;color:#333;border:none;font-family:inherit;">Close</button>
   </div>
 </div>
@@ -499,30 +455,6 @@ select option{background:#1c1c1c}
       <span class="modal-close" onclick="document.getElementById('low-modal').classList.remove('on')">&#10005;</span>
     </div>
     <div id="low-modal-list"></div>
-  </div>
-</div>
-<div class="cust-detail-overlay" id="cust-detail-overlay">
-  <div class="cust-detail-header">
-    <button onclick="closeCustDetail()" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;padding:0;">&#8592;</button>
-    <div class="cust-avatar" id="cd-avatar">?</div>
-    <div>
-      <div style="font-weight:800;font-size:16px;" id="cd-name">Customer</div>
-      <div style="font-size:12px;color:var(--t2);" id="cd-meta"></div>
-    </div>
-    <div style="margin-left:auto;text-align:right;">
-      <div style="font-size:18px;font-weight:800;color:var(--gold);" id="cd-total">KES 0</div>
-      <div style="font-size:10px;color:var(--t2);">Total Spent</div>
-    </div>
-  </div>
-  <div class="cust-detail-body">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
-      <div class="sc"><div class="sl">Visits</div><div class="sv" id="cd-visits" style="color:var(--gold)">0</div></div>
-      <div class="sc"><div class="sl">Balance</div><div class="sv" id="cd-balance" style="color:var(--err)">KES 0</div></div>
-      <div class="sc"><div class="sl">Last Visit</div><div class="sv" id="cd-last" style="font-size:13px;color:var(--t)">—</div></div>
-    </div>
-    <div id="cd-debt-actions" style="display:none;margin-bottom:12px;"></div>
-    <div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:10px;">Purchase History</div>
-    <div id="cd-history"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -549,14 +481,9 @@ function dbPatch(t, b, q) { return req('PATCH', t, b, q); }
 function dbDel(t, q) { return req('DELETE', t, null, q); }
 
 var inv = [], cart = [], payMethod = 'Cash', pin = '', storedPin = '1234';
-var dateFilter = 'today', finDateFilter = 'all', custFilter = 'all';
+var dateFilter = 'today';
 var finOpen = false, dMethods = {}, allSales = [], activeCat = 'All';
-var splitMode = false, lastReceiptText = '', lastReceiptRef = '';
-
-function genRef() {
-  var n = Math.floor(10000 + Math.random() * 90000);
-  return 'LX-' + n;
-}
+var splitMode = false;
 function fmt(n) { return 'KES ' + Math.round(n || 0).toLocaleString(); }
 
 function toast(msg, type) {
@@ -583,7 +510,7 @@ function showTab(name, btn) {
   if (name === 'inventory') loadInv();
   else if (name === 'sales') { loadInvQ(); initDate(); loadSalesNames(); }
   else if (name === 'history') loadHist();
-  else if (name === 'debtors') loadCustomers();
+  else if (name === 'debtors') loadDebt();
   else if (name === 'finance') renderFin();
   if (name !== 'sales') document.getElementById('float-btn').classList.remove('on');
   else if (cart.length > 0) updateFloat();
@@ -1026,8 +953,6 @@ function completeSale() {
 }
 
 function showReceipt(cust, date, items, total, paid, balance, m, splitDetails) {
-  lastReceiptRef = genRef();
-  document.getElementById('r-ref').textContent = 'Receipt ' + lastReceiptRef;
   var det = '<div class="r-row"><span>Customer:</span><span>' + cust + '</span></div>';
   items.forEach(function(i) { det += '<div class="r-row"><span>' + i.qty + 'x ' + i.name + '</span><span>' + fmt(i.selling_price * i.qty) + '</span></div>'; });
   document.getElementById('r-details').innerHTML = det;
@@ -1042,18 +967,6 @@ function showReceipt(cust, date, items, total, paid, balance, m, splitDetails) {
     : '<div class="r-row" style="color:#27ae60;"><span>Change</span><span>' + fmt(paid - total) + '</span></div>';
   document.getElementById('r-totals').innerHTML = tot;
   document.getElementById('r-date').textContent = date;
-  // Build receipt text for sharing
-  var lines = ['=== LIZ LUXE ===', 'LUXURY · BEAUTY · STYLE', lastReceiptRef, ''];
-  lines.push('Customer: ' + cust);
-  items.forEach(function(i) { lines.push(i.qty + 'x ' + i.name + ' — ' + fmt(i.selling_price * i.qty)); });
-  lines.push('');
-  lines.push('TOTAL: ' + fmt(total));
-  if (splitDetails) lines.push('Split: ' + splitDetails);
-  else lines.push('Paid (' + m + '): ' + fmt(paid));
-  if (balance > 0) lines.push('Balance due: ' + fmt(balance));
-  lines.push(''); lines.push(date);
-  lines.push('Thank you for shopping with Liz Luxe!');
-  lastReceiptText = lines.join('\n');
   document.getElementById('r-overlay').classList.add('on');
 }
 function closeReceipt() { document.getElementById('r-overlay').classList.remove('on'); }
@@ -1136,116 +1049,43 @@ function deleteSale(id) {
     }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
-// ── Customers Tab ──
-var allCustomerSales = [];
-var custFilterMode = 'all';
-
-function loadCustomers() {
-  var el = document.getElementById('cust-list');
-  el.innerHTML = skelHtml();
-  dbGet('sales', '?order=customer_name.asc').then(function(sales) {
-    allCustomerSales = sales;
-    document.getElementById('debt-dot').classList.toggle('on', sales.some(function(s) { return s.balance > 0; }));
-    filterCustomers();
+function loadDebt() {
+  var el = document.getElementById('debt-list');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  dbGet('sales', '?balance=gt.0&order=customer_name.asc').then(function(sales) {
+    document.getElementById('debt-dot').classList.toggle('on', sales.length > 0);
+    if (!sales.length) { el.innerHTML = '<div class="card"><div class="empty">No outstanding debts!</div></div>'; return; }
+    var map = {};
+    sales.forEach(function(s) { var n = s.customer_name || 'Unknown'; if (!map[n]) map[n] = []; map[n].push(s); });
+    var html = '';
+    Object.keys(map).forEach(function(name) {
+      var owed = map[name].reduce(function(s, x) { return s + (x.balance || 0); }, 0);
+      var key = 'k' + name.replace(/[^a-z0-9]/gi, '_');
+      var dates = map[name].map(function(s) { return s.date; }).join(', ');
+      var its = map[name].flatMap(function(s) { return (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }); }).join(', ');
+      var ids = map[name].map(function(s) { return s.id; }).join(',');
+      html += '<div class="dc">';
+      html += '<div style="display:flex;gap:10px;margin-bottom:10px;">';
+      html += '<div style="flex:1;"><div style="font-weight:800;font-size:16px;">' + name + '</div>';
+      html += '<div style="font-size:12px;color:var(--t2);margin-top:3px;">' + dates + '</div>';
+      html += '<div style="font-size:12px;color:var(--t2);margin-top:2px;">' + its + '</div></div>';
+      html += '<div style="font-size:20px;font-weight:800;color:var(--err);white-space:nowrap;">' + fmt(owed) + '</div></div>';
+      html += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+      html += '<button class="btn bsm bok-btn" onclick="markFullyPaid(' + "'" + ids + "'" + ',' + Math.round(owed) + ')" style="flex:1;">&#10003; Mark Fully Paid</button>';
+      html += '<button class="btn bsm" onclick="togglePP(' + "'" + key + "'" + ')" style="flex:1;">+ Partial Payment</button></div>';
+      html += '<div class="pp" id="pp-' + key + '">';
+      html += '<div class="g12"><label>Amount Paid (KES)</label><input id="pa-' + key + '" type="number" placeholder="' + Math.round(owed) + '"></div>';
+      html += '<label style="margin-bottom:6px;display:block;">Payment Method</label>';
+      html += '<div class="mg" id="pm-' + key + '">';
+      html += '<div class="mb sel" onclick="selDM(this,' + "'" + key + "'" + ',' + "'" + 'Cash' + "'" + ')">Cash</div>';
+      html += '<div class="mb" onclick="selDM(this,' + "'" + key + "'" + ',' + "'" + 'M-Pesa' + "'" + ')">M-Pesa</div>';
+      html += '<div class="mb" onclick="selDM(this,' + "'" + key + "'" + ',' + "'" + 'Card' + "'" + ')">Card</div>';
+      html += '<div class="mb" onclick="selDM(this,' + "'" + key + "'" + ',' + "'" + 'Bank' + "'" + ')">Bank Transfer</div></div>';
+      html += '<button class="btn bp bsm" id="pb-' + key + '" onclick="payDebt(' + "'" + key + "'" + ',' + "'" + ids + "'" + ')">Record Payment</button></div></div>';
+    });
+    el.innerHTML = html;
   }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
 }
-
-function setCustFilter(btn, mode) {
-  document.querySelectorAll('#tab-debtors .dpill').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  custFilterMode = mode;
-  filterCustomers();
-}
-
-function filterCustomers() {
-  var q = (document.getElementById('cust-search').value || '').toLowerCase();
-  var map = {};
-  allCustomerSales.forEach(function(s) {
-    var n = s.customer_name || 'Walk-in';
-    if (!map[n]) map[n] = {sales: [], totalSpent: 0, balance: 0, lastDate: ''};
-    map[n].sales.push(s);
-    map[n].totalSpent += s.paid || 0;
-    map[n].balance += s.balance || 0;
-    if (!map[n].lastDate || s.date > map[n].lastDate) map[n].lastDate = s.date;
-  });
-  var keys = Object.keys(map).filter(function(n) {
-    var matchQ = !q || n.toLowerCase().indexOf(q) >= 0;
-    var matchF = custFilterMode === 'all' || (custFilterMode === 'debt' && map[n].balance > 0);
-    return matchQ && matchF;
-  }).sort(function(a, b) { return map[b].totalSpent - map[a].totalSpent; });
-  var el = document.getElementById('cust-list');
-  if (!keys.length) { el.innerHTML = '<div class="empty">No customers found</div>'; return; }
-  var html = '';
-  keys.forEach(function(name) {
-    var c = map[name];
-    var initial = name.charAt(0).toUpperCase();
-    var hasDebt = c.balance > 0;
-    html += '<div class="cust-card" onclick="openCustDetail(' + JSON.stringify(name) + ')">';
-    html += '<div style="display:flex;align-items:center;gap:12px;">';
-    html += '<div class="cust-avatar">' + initial + '</div>';
-    html += '<div style="flex:1;">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">';
-    html += '<span style="font-weight:700;font-size:15px;">' + name + '</span>';
-    if (hasDebt) html += '<span class="debt-badge">Owes ' + fmt(c.balance) + '</span>';
-    html += '</div>';
-    html += '<div style="font-size:12px;color:var(--t2);">' + c.sales.length + ' purchase' + (c.sales.length !== 1 ? 's' : '') + ' &middot; Last: ' + (c.lastDate || '—') + '</div>';
-    html += '</div>';
-    html += '<div style="text-align:right;"><div style="font-size:15px;font-weight:800;color:var(--gold);">' + fmt(c.totalSpent) + '</div>';
-    html += '<div style="font-size:10px;color:var(--t2);">total spent</div></div>';
-    html += '</div></div>';
-  });
-  el.innerHTML = html;
-}
-
-function openCustDetail(name) {
-  var sales = allCustomerSales.filter(function(s) { return s.customer_name === name; })
-    .sort(function(a, b) { return b.date.localeCompare(a.date); });
-  var totalSpent = sales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
-  var balance = sales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
-  var lastDate = sales.length ? sales[0].date : '—';
-  document.getElementById('cd-avatar').textContent = name.charAt(0).toUpperCase();
-  document.getElementById('cd-name').textContent = name;
-  document.getElementById('cd-meta').textContent = sales.length + ' purchases';
-  document.getElementById('cd-total').textContent = fmt(totalSpent);
-  document.getElementById('cd-visits').textContent = sales.length;
-  var balEl = document.getElementById('cd-balance');
-  balEl.textContent = fmt(balance);
-  balEl.style.color = balance > 0 ? 'var(--err)' : 'var(--ok)';
-  document.getElementById('cd-last').textContent = lastDate;
-  // Debt actions
-  var da = document.getElementById('cd-debt-actions');
-  if (balance > 0) {
-    var ids = sales.filter(function(s) { return s.balance > 0; }).map(function(s) { return s.id; }).join(',');
-    da.style.display = 'block';
-    da.innerHTML = '<div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--rs);padding:12px;margin-bottom:8px;">'
-      + '<div style="font-size:12px;color:var(--err);font-weight:700;margin-bottom:8px;">&#9888; Outstanding Balance: ' + fmt(balance) + '</div>'
-      + '<button class="btn bok-btn bsm" onclick="markFullyPaid(' + JSON.stringify(ids) + ',' + Math.round(balance) + ');closeCustDetail()">&#10003; Mark Fully Paid</button></div>';
-  } else {
-    da.style.display = 'none';
-  }
-  // History
-  var html = '';
-  sales.forEach(function(s) {
-    var its = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
-    html += '<div class="sale-card" style="margin-bottom:8px;">';
-    html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
-    html += '<span style="font-size:12px;color:var(--t2);">' + s.date + '</span>';
-    html += '<span style="font-weight:800;color:var(--gold);">' + fmt(s.total) + '</span></div>';
-    html += '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">' + its + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-    html += '<span class="chip">' + s.method + '</span>';
-    html += '<span style="font-size:12px;font-weight:700;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' + (s.balance > 0 ? 'Owes ' + fmt(s.balance) : 'Paid') + '</span>';
-    html += '</div></div>';
-  });
-  document.getElementById('cd-history').innerHTML = html || '<div class="empty">No purchases</div>';
-  document.getElementById('cust-detail-overlay').classList.add('on');
-}
-
-function closeCustDetail() {
-  document.getElementById('cust-detail-overlay').classList.remove('on');
-}
-
-function loadDebt() { loadCustomers(); }
 
 function markFullyPaid(idsStr, total) {
   if (!confirm('Mark all debts for this customer as fully paid?\nTotal: ' + fmt(total))) return;
@@ -1256,7 +1096,7 @@ function markFullyPaid(idsStr, total) {
     });
     return Promise.all(ps);
   }).then(function() {
-    toast('Marked as fully paid', 'ok'); allCustomerSales = []; loadCustomers();
+    toast('Marked as fully paid', 'ok'); allSales = []; loadDebt();
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
@@ -1287,13 +1127,6 @@ function payDebt(key, idsStr) {
   .finally(function() { loading('pb-' + key, false, 'Record Payment'); });
 }
 
-function setFinFilter(btn, f) {
-  document.querySelectorAll('.fin-date-pills .dpill').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  finDateFilter = f;
-  renderFin();
-}
-
 function renderFin() {
   if (!finOpen) {
     document.getElementById('fin-pin').style.display = 'block';
@@ -1301,33 +1134,9 @@ function renderFin() {
   }
   document.getElementById('fin-pin').style.display = 'none';
   document.getElementById('fin-content').style.display = 'block';
-  var today = new Date().toISOString().slice(0, 10);
-  Promise.all([dbGet('sales', '?select=paid,items,balance,date'), dbGet('deductions', '?order=created_at.desc')])
+  Promise.all([dbGet('sales', '?select=paid,items,balance'), dbGet('deductions', '?order=created_at.desc')])
     .then(function(r) {
-      var allSalesData = r[0], deds = r[1];
-      // Daily summary always uses today
-      var todaySales = allSalesData.filter(function(s) { return s.date === today; });
-      var dayRev = todaySales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
-      var dayCogs = todaySales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
-      document.getElementById('fd-rev').textContent = fmt(dayRev);
-      document.getElementById('fd-pro').textContent = fmt(dayRev - dayCogs);
-      document.getElementById('fd-cnt').textContent = todaySales.length;
-      // Apply date filter
-      var now = new Date();
-      var sales = allSalesData.filter(function(s) {
-        if (finDateFilter === 'all') return true;
-        if (finDateFilter === 'today') return s.date === today;
-        if (finDateFilter === 'week') {
-          var day = now.getDay();
-          var mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-          return s.date >= mon.toISOString().slice(0, 10) && s.date <= today;
-        }
-        if (finDateFilter === 'month') {
-          var from = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01';
-          return s.date >= from && s.date <= today;
-        }
-        return true;
-      });
+      var sales = r[0], deds = r[1];
       var rev = sales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
       var cogs = sales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
       var pro = rev - cogs;
@@ -1403,36 +1212,10 @@ function lockApp() {
   finOpen = false;
 }
 
-function shareReceipt() {
-  if (navigator.share) {
-    navigator.share({
-      title: 'Liz Luxe Receipt ' + lastReceiptRef,
-      text: lastReceiptText
-    }).catch(function() {});
-  } else {
-    fallbackCopy(lastReceiptText);
-    toast('Share not supported — copied instead', 'ok');
-  }
-}
-
 function unlockApp() {
   document.getElementById('app-lock').classList.add('hidden');
   resetLockTimer();
   loadInv();
-  // Daily summary toast on first unlock of the day
-  var lastUnlock = localStorage.getItem('llLastUnlock') || '';
-  var today = new Date().toISOString().slice(0, 10);
-  if (lastUnlock !== today) {
-    localStorage.setItem('llLastUnlock', today);
-    dbGet('sales', '?date=eq.' + today + '&select=paid,items').then(function(sales) {
-      if (!sales.length) return;
-      var rev = sales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
-      var cogs = sales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
-      setTimeout(function() {
-        toast('Today: ' + sales.length + ' sales · ' + fmt(rev) + ' revenue · ' + fmt(rev - cogs) + ' profit', 'ok');
-      }, 800);
-    }).catch(function() {});
-  }
 }
 
 function lockPress(k) {
@@ -1528,10 +1311,32 @@ function clearCart() {
 }
 
 function copyReceipt() {
-  var text = lastReceiptText || '=== LIZ LUXE ===\nReceipt';
+  var lines = [];
+  lines.push('=== LIZ LUXE ===');
+  lines.push('LUXURY · BEAUTY · STYLE');
+  lines.push('');
+  document.querySelectorAll('#r-details .r-row').forEach(function(row) {
+    var spans = row.querySelectorAll('span');
+    if (spans.length === 2) lines.push(spans[0].textContent + ': ' + spans[1].textContent);
+  });
+  lines.push('');
+  document.querySelectorAll('#r-totals .r-row').forEach(function(row) {
+    var spans = row.querySelectorAll('span');
+    if (spans.length === 2) lines.push(spans[0].textContent + ': ' + spans[1].textContent);
+  });
+  lines.push('');
+  lines.push(document.getElementById('r-date').textContent);
+  lines.push('Thank you for shopping with Liz Luxe!');
+  var text = lines.join('\n');
+
+  // Try modern clipboard API first (works on HTTPS)
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(function() { toast('Receipt copied!', 'ok'); }).catch(function() { fallbackCopy(text); });
-  } else { fallbackCopy(text); }
+    navigator.clipboard.writeText(text)
+      .then(function() { toast('Receipt copied!', 'ok'); })
+      .catch(function() { fallbackCopy(text); });
+  } else {
+    fallbackCopy(text);
+  }
 }
 
 function fallbackCopy(text) {
