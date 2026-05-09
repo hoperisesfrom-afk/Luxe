@@ -560,7 +560,7 @@ function dbDel(t, q) { return req('DELETE', t, null, q); }
 var inv = [], cart = [], payMethod = 'Cash', pin = '', storedPin = '1234';
 var dateFilter = 'today', finDateFilter = 'all', custFilter = 'all';
 var finOpen = false, dMethods = {}, allSales = [], activeCat = 'All';
-var splitMode = false, lastReceiptText = '', lastReceiptRef = '';
+var splitMode = false, lastReceiptText = '', lastReceiptRef = '', lastReceiptData = null;
 
 function genRef() {
   var n = Math.floor(10000 + Math.random() * 90000);
@@ -1063,6 +1063,12 @@ function showReceipt(cust, date, items, total, paid, balance, m, splitDetails) {
   lines.push(''); lines.push(date);
   lines.push('Thank you for shopping with Liz Luxe!');
   lastReceiptText = lines.join('\n');
+  // Store structured data for image generation
+  lastReceiptData = {
+    ref: lastReceiptRef, cust: cust, date: date,
+    items: items, total: total, paid: paid,
+    balance: balance, method: m, splitDetails: splitDetails || null
+  };
   document.getElementById('r-overlay').classList.add('on');
 }
 function closeReceipt() { document.getElementById('r-overlay').classList.remove('on'); }
@@ -1503,14 +1509,177 @@ function lockApp() {
 }
 
 function shareReceipt() {
-  if (navigator.share) {
-    navigator.share({
-      title: 'Liz Luxe Receipt ' + lastReceiptRef,
-      text: lastReceiptText
-    }).catch(function() {});
+  if (!lastReceiptData) { fallbackCopy(lastReceiptText); return; }
+  var d = lastReceiptData;
+
+  // ── Build receipt lines ──
+  var lines = [];
+  lines.push({t: 'logo',  v: 'Liz Luxe'});
+  lines.push({t: 'sub',   v: 'LUXURY  ·  BEAUTY  ·  STYLE'});
+  lines.push({t: 'ref',   v: d.ref});
+  lines.push({t: 'div'});
+  lines.push({t: 'row',   l: 'Customer', r: d.cust});
+  d.items.forEach(function(i) {
+    lines.push({t: 'row', l: i.qty + 'x ' + i.name, r: fmt(i.selling_price * i.qty)});
+  });
+  lines.push({t: 'div'});
+  lines.push({t: 'total', l: 'TOTAL', r: fmt(d.total)});
+  if (d.splitDetails) {
+    lines.push({t: 'row', l: 'Split', r: d.splitDetails, small: true});
+  } else {
+    lines.push({t: 'row', l: 'Paid (' + d.method + ')', r: fmt(d.paid)});
+  }
+  if (d.balance > 0) {
+    lines.push({t: 'bal', l: 'Balance Due', r: fmt(d.balance), red: true});
+  } else {
+    lines.push({t: 'row', l: 'Change', r: fmt(d.paid - d.total), green: true});
+  }
+  lines.push({t: 'div'});
+  lines.push({t: 'foot', v: 'Thank you for shopping with'});
+  lines.push({t: 'brand', v: '✦  Liz Luxe  ✦'});
+  lines.push({t: 'date', v: d.date});
+
+  // ── Canvas setup ──
+  var W = 640, pad = 48, font = 'Georgia, serif';
+  var canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d');
+
+  // Measure height first
+  var lineH = 38, divH = 20, totalH = pad * 2;
+  lines.forEach(function(l) {
+    if (l.t === 'div') totalH += divH + 16;
+    else if (l.t === 'logo') totalH += 62;
+    else if (l.t === 'sub' || l.t === 'ref') totalH += 28;
+    else if (l.t === 'foot') totalH += 32;
+    else if (l.t === 'brand') totalH += 40;
+    else if (l.t === 'date') totalH += 28;
+    else totalH += lineH;
+  });
+  totalH += 20;
+
+  canvas.width = W;
+  canvas.height = totalH;
+
+  // Background
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, W, totalH, 18);
+  ctx.fill();
+
+  // Draw jagged top/bottom edge (receipt effect)
+  var sawSize = 10;
+  ctx.fillStyle = '#f4f4f4';
+  for (var x = 0; x < W; x += sawSize * 2) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0); ctx.lineTo(x + sawSize, sawSize); ctx.lineTo(x + sawSize * 2, 0); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x, totalH); ctx.lineTo(x + sawSize, totalH - sawSize); ctx.lineTo(x + sawSize * 2, totalH); ctx.fill();
+  }
+
+  var y = pad;
+
+  function drawDiv() {
+    ctx.save();
+    ctx.strokeStyle = '#ddd';
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, y + 8); ctx.lineTo(W - pad, y + 8); ctx.stroke();
+    ctx.restore();
+    y += divH + 16;
+  }
+
+  lines.forEach(function(l) {
+    if (l.t === 'div') { drawDiv(); return; }
+    if (l.t === 'logo') {
+      ctx.font = 'italic bold 38px ' + font;
+      ctx.fillStyle = '#C9972A';
+      ctx.textAlign = 'center';
+      ctx.fillText('Liz Luxe', W / 2, y + 38);
+      y += 62; return;
+    }
+    if (l.t === 'sub') {
+      ctx.font = '13px ' + font;
+      ctx.fillStyle = '#999';
+      ctx.textAlign = 'center';
+      ctx.letterSpacing = '3px';
+      ctx.fillText(l.v, W / 2, y + 14);
+      y += 28; return;
+    }
+    if (l.t === 'ref') {
+      ctx.font = '11px monospace';
+      ctx.fillStyle = '#bbb';
+      ctx.textAlign = 'center';
+      ctx.fillText(l.v, W / 2, y + 12);
+      y += 28; return;
+    }
+    if (l.t === 'total') {
+      ctx.font = 'bold 20px ' + font;
+      ctx.fillStyle = '#111';
+      ctx.textAlign = 'left';
+      ctx.fillText(l.l, pad, y + 22);
+      ctx.textAlign = 'right';
+      ctx.fillText(l.r, W - pad, y + 22);
+      y += lineH + 4; return;
+    }
+    if (l.t === 'row' || l.t === 'bal') {
+      var fs = l.small ? '12px' : '15px';
+      ctx.font = fs + ' ' + font;
+      ctx.fillStyle = l.red ? '#c0392b' : l.green ? '#27ae60' : '#444';
+      ctx.textAlign = 'left';
+      ctx.fillText(l.l, pad, y + 20);
+      ctx.textAlign = 'right';
+      ctx.fillText(l.r, W - pad, y + 20);
+      y += lineH; return;
+    }
+    if (l.t === 'foot') {
+      ctx.font = 'italic 13px ' + font;
+      ctx.fillStyle = '#aaa';
+      ctx.textAlign = 'center';
+      ctx.fillText(l.v, W / 2, y + 16);
+      y += 32; return;
+    }
+    if (l.t === 'brand') {
+      ctx.font = 'bold 20px ' + font;
+      ctx.fillStyle = '#C9972A';
+      ctx.textAlign = 'center';
+      ctx.fillText(l.v, W / 2, y + 24);
+      y += 40; return;
+    }
+    if (l.t === 'date') {
+      ctx.font = '12px ' + font;
+      ctx.fillStyle = '#bbb';
+      ctx.textAlign = 'center';
+      ctx.fillText(l.v, W / 2, y + 14);
+      y += 28; return;
+    }
+  });
+
+  // Share as image
+  canvas.toBlob(function(blob) {
+    var file = new File([blob], 'LizLuxe-Receipt-' + d.ref + '.png', {type: 'image/png'});
+    if (navigator.share && navigator.canShare && navigator.canShare({files: [file]})) {
+      navigator.share({
+        title: 'Liz Luxe Receipt ' + d.ref,
+        files: [file]
+      }).catch(function() { shareAsUrl(canvas); });
+    } else {
+      shareAsUrl(canvas);
+    }
+  }, 'image/png');
+}
+
+function shareAsUrl(canvas) {
+  // Fallback: open image in new tab so user can long-press to save/share
+  var url = canvas.toDataURL('image/png');
+  var win = window.open();
+  if (win) {
+    win.document.write('<html><body style="margin:0;background:#111;">'
+      + '<p style="color:#fff;font-family:sans-serif;padding:12px;font-size:13px;">Long-press the image to save or share</p>'
+      + '<img src="' + url + '" style="width:100%;max-width:480px;display:block;margin:0 auto;">'
+      + '</body></html>');
   } else {
     fallbackCopy(lastReceiptText);
-    toast('Share not supported — copied instead', 'ok');
+    toast('Copied as text instead', 'ok');
   }
 }
 
