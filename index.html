@@ -1450,7 +1450,7 @@ function renderFin() {
   document.getElementById('fin-pin').style.display = 'none';
   document.getElementById('fin-content').style.display = 'block';
   var today = new Date().toISOString().slice(0, 10);
-  Promise.all([dbGet('sales', '?select=paid,items,balance,date'), dbGet('deductions', '?order=created_at.desc')])
+  Promise.all([dbGet('sales', '?select=paid,items,balance,date,method,payment_log,split_details'), dbGet('deductions', '?order=created_at.desc')])
     .then(function(r) {
       var allSalesData = r[0], deds = r[1];
       // Daily summary always uses today
