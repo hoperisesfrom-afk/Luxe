@@ -440,7 +440,7 @@ select option{background:#1c1c1c}
           <div class="sc"><div class="sl">Capital In</div><div class="sv" id="f-inj" style="color:var(--info)">KES 0</div></div>
           <div class="sc"><div class="sl">Net Balance</div><div class="sv" id="f-bal">KES 0</div></div>
         </div>
-        <div class="info-bar" style="font-size:12px;">Balance = Profit &minus; Expenses + Capital injected</div>
+        <div class="info-bar" style="font-size:12px;">Net Balance = Money Collected &minus; Expenses + Capital injected</div>
 
         <!-- Export -->
         <button class="export-btn" onclick="exportCSV()">&#128229; Export Sales to CSV</button>
@@ -1481,7 +1481,9 @@ function renderFin() {
       var pro = rev - cogs;
       var totExp = deds.filter(function(d) { return d.type !== 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
       var totInj = deds.filter(function(d) { return d.type === 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
-      var bal = pro - totExp + totInj;
+      // Net Balance = Cash in hand - what you spent + capital added
+      // i.e. Total Collected - Expenses + Capital Injected
+      var bal = rev - totExp + totInj;
       document.getElementById('f-rev').textContent = fmt(rev);
       document.getElementById('f-pro').textContent = fmt(pro);
       document.getElementById('f-inj').textContent = fmt(totInj);
@@ -1649,10 +1651,13 @@ function shareReceipt() {
 
   // ── Canvas setup ──
   var W = 640, pad = 48, font = 'Georgia, serif';
+  var GOLD = '#C9972A', GOLD_DIM = '#8a6820', WHITE = '#f0ead6', GREY = '#6a6050';
+  var BG = '#0f0f0f', BG2 = '#1a1a1a', DIVIDER = 'rgba(201,151,42,0.3)';
+  var RED = '#e06060', GREEN = '#7bc950';
   var canvas = document.createElement('canvas');
   var ctx = canvas.getContext('2d');
 
-  // Measure height first
+  // Measure height
   var lineH = 38, divH = 20, totalH = pad * 2;
   lines.forEach(function(l) {
     if (l.t === 'div') totalH += divH + 16;
@@ -1669,27 +1674,33 @@ function shareReceipt() {
   canvas.height = totalH;
 
   // Background
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.roundRect(0, 0, W, totalH, 18);
-  ctx.fill();
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, totalH);
 
-  // Draw jagged top/bottom edge (receipt effect)
+  // Gold border
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(6, 6, W - 12, totalH - 12);
+
+  // Subtle inner glow line
+  ctx.strokeStyle = 'rgba(201,151,42,0.15)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(12, 12, W - 24, totalH - 24);
+
+  // Jagged top/bottom (gold tinted)
   var sawSize = 10;
-  ctx.fillStyle = '#f4f4f4';
-  for (var x = 0; x < W; x += sawSize * 2) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0); ctx.lineTo(x + sawSize, sawSize); ctx.lineTo(x + sawSize * 2, 0); ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(x, totalH); ctx.lineTo(x + sawSize, totalH - sawSize); ctx.lineTo(x + sawSize * 2, totalH); ctx.fill();
+  ctx.fillStyle = '#050505';
+  for (var xi = 0; xi < W; xi += sawSize * 2) {
+    ctx.beginPath(); ctx.moveTo(xi, 6); ctx.lineTo(xi + sawSize, 6 + sawSize); ctx.lineTo(xi + sawSize * 2, 6); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(xi, totalH - 6); ctx.lineTo(xi + sawSize, totalH - 6 - sawSize); ctx.lineTo(xi + sawSize * 2, totalH - 6); ctx.fill();
   }
 
   var y = pad;
 
   function drawDiv() {
     ctx.save();
-    ctx.strokeStyle = '#ddd';
-    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = DIVIDER;
+    ctx.setLineDash([5, 5]);
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad, y + 8); ctx.lineTo(W - pad, y + 8); ctx.stroke();
     ctx.restore();
@@ -1700,62 +1711,57 @@ function shareReceipt() {
     if (l.t === 'div') { drawDiv(); return; }
     if (l.t === 'logo') {
       ctx.font = 'italic bold 38px ' + font;
-      ctx.fillStyle = '#C9972A';
+      ctx.fillStyle = GOLD;
       ctx.textAlign = 'center';
       ctx.fillText('Liz Luxe', W / 2, y + 38);
       y += 62; return;
     }
     if (l.t === 'sub') {
       ctx.font = '13px ' + font;
-      ctx.fillStyle = '#999';
+      ctx.fillStyle = GOLD_DIM;
       ctx.textAlign = 'center';
-      ctx.letterSpacing = '3px';
       ctx.fillText(l.v, W / 2, y + 14);
       y += 28; return;
     }
     if (l.t === 'ref') {
       ctx.font = '11px monospace';
-      ctx.fillStyle = '#bbb';
+      ctx.fillStyle = GREY;
       ctx.textAlign = 'center';
       ctx.fillText(l.v, W / 2, y + 12);
       y += 28; return;
     }
     if (l.t === 'total') {
       ctx.font = 'bold 20px ' + font;
-      ctx.fillStyle = '#111';
-      ctx.textAlign = 'left';
-      ctx.fillText(l.l, pad, y + 22);
-      ctx.textAlign = 'right';
-      ctx.fillText(l.r, W - pad, y + 22);
+      ctx.fillStyle = GOLD;
+      ctx.textAlign = 'left'; ctx.fillText(l.l, pad, y + 22);
+      ctx.textAlign = 'right'; ctx.fillText(l.r, W - pad, y + 22);
       y += lineH + 4; return;
     }
     if (l.t === 'row' || l.t === 'bal') {
       var fs = l.small ? '12px' : '15px';
       ctx.font = fs + ' ' + font;
-      ctx.fillStyle = l.red ? '#c0392b' : l.green ? '#27ae60' : '#444';
-      ctx.textAlign = 'left';
-      ctx.fillText(l.l, pad, y + 20);
-      ctx.textAlign = 'right';
-      ctx.fillText(l.r, W - pad, y + 20);
+      ctx.fillStyle = l.red ? RED : l.green ? GREEN : WHITE;
+      ctx.textAlign = 'left'; ctx.fillText(l.l, pad, y + 20);
+      ctx.textAlign = 'right'; ctx.fillText(l.r, W - pad, y + 20);
       y += lineH; return;
     }
     if (l.t === 'foot') {
       ctx.font = 'italic 13px ' + font;
-      ctx.fillStyle = '#aaa';
+      ctx.fillStyle = GREY;
       ctx.textAlign = 'center';
       ctx.fillText(l.v, W / 2, y + 16);
       y += 32; return;
     }
     if (l.t === 'brand') {
       ctx.font = 'bold 20px ' + font;
-      ctx.fillStyle = '#C9972A';
+      ctx.fillStyle = GOLD;
       ctx.textAlign = 'center';
       ctx.fillText(l.v, W / 2, y + 24);
       y += 40; return;
     }
     if (l.t === 'date') {
       ctx.font = '12px ' + font;
-      ctx.fillStyle = '#bbb';
+      ctx.fillStyle = GREY;
       ctx.textAlign = 'center';
       ctx.fillText(l.v, W / 2, y + 14);
       y += 28; return;
