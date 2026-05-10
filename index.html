@@ -183,6 +183,15 @@ select option{background:#1c1c1c}
 /* ── Finance Date Filter ── */
 .fin-date-pills{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;}
 .fin-date-pills::-webkit-scrollbar{display:none;}
+.money-breakdown{background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:16px;margin-bottom:14px;}
+.money-breakdown-title{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:12px;}
+.money-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--b3);}
+.money-row:last-child{border-bottom:none;padding-bottom:0;}
+.money-row-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--t2);}
+.money-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.money-row-val{font-size:15px;font-weight:800;}
+.money-total-row{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--b2);}
+.export-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gold);cursor:pointer;margin-bottom:12px;}
 /* ── Daily Summary ── */
 .daily-summary{background:linear-gradient(135deg,rgba(201,151,42,.15),rgba(201,151,42,.05));border:1px solid var(--b2);border-radius:var(--r);padding:16px;margin-bottom:14px;}
 .daily-summary-title{font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
@@ -395,6 +404,36 @@ select option{background:#1c1c1c}
           <button class="dpill" onclick="setFinFilter(this,'week')">This Week</button>
           <button class="dpill" onclick="setFinFilter(this,'month')">This Month</button>
         </div>
+
+        <!-- Money Breakdown -->
+        <div class="money-breakdown">
+          <div class="money-breakdown-title">&#128181; Where your money is sitting</div>
+          <div class="money-row">
+            <div class="money-row-label"><div class="money-dot" style="background:#4caf50;"></div>Cash</div>
+            <div class="money-row-val" id="mb-cash" style="color:#4caf50;">KES 0</div>
+          </div>
+          <div class="money-row">
+            <div class="money-row-label"><div class="money-dot" style="background:#2196f3;"></div>M-Pesa</div>
+            <div class="money-row-val" id="mb-mpesa" style="color:#2196f3;">KES 0</div>
+          </div>
+          <div class="money-row">
+            <div class="money-row-label"><div class="money-dot" style="background:#9c27b0;"></div>Card</div>
+            <div class="money-row-val" id="mb-card" style="color:#9c27b0;">KES 0</div>
+          </div>
+          <div class="money-row">
+            <div class="money-row-label"><div class="money-dot" style="background:#f44336;"></div>Credit (Owed to you)</div>
+            <div class="money-row-val" id="mb-credit" style="color:#f44336;">KES 0</div>
+          </div>
+          <div class="money-row">
+            <div class="money-row-label"><div class="money-dot" style="background:#ff9800;"></div>Split</div>
+            <div class="money-row-val" id="mb-split" style="color:#ff9800;">KES 0</div>
+          </div>
+          <div class="money-total-row">
+            <span style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">Total Collected</span>
+            <span style="font-size:18px;font-weight:800;color:var(--gold);" id="mb-total">KES 0</span>
+          </div>
+        </div>
+
         <div class="sg">
           <div class="sc"><div class="sl">Revenue</div><div class="sv" id="f-rev" style="color:var(--gold)">KES 0</div></div>
           <div class="sc"><div class="sl">Profit</div><div class="sv" id="f-pro" style="color:var(--ok)">KES 0</div></div>
@@ -402,6 +441,9 @@ select option{background:#1c1c1c}
           <div class="sc"><div class="sl">Net Balance</div><div class="sv" id="f-bal">KES 0</div></div>
         </div>
         <div class="info-bar" style="font-size:12px;">Balance = Profit &minus; Expenses + Capital injected</div>
+
+        <!-- Export -->
+        <button class="export-btn" onclick="exportCSV()">&#128229; Export Sales to CSV</button>
         <div class="card">
           <div class="ct">&#8722; Record Expense</div>
           <div class="g12"><label>Amount (KES)</label><input id="ded-amt" type="number" placeholder="500"></div>
@@ -996,7 +1038,8 @@ function completeSale() {
   var balance = total - paid;
   loading('sale-btn', true);
   var items = cart.map(function(c) { return {id: c.id, name: c.name, qty: c.qty, selling_price: c.sp, buying_price: c.bp}; });
-  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date};
+  lastReceiptRef = genRef();
+  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef};
   if (splitDetails) saleData.split_details = splitDetails;
 
   dbPost('sales', saleData)
@@ -1035,7 +1078,7 @@ function completeSale() {
 }
 
 function showReceipt(cust, date, items, total, paid, balance, m, splitDetails) {
-  lastReceiptRef = genRef();
+  // lastReceiptRef already set in completeSale
   document.getElementById('r-ref').textContent = 'Receipt ' + lastReceiptRef;
   var det = '<div class="r-row"><span>Customer:</span><span>' + cust + '</span></div>';
   items.forEach(function(i) { det += '<div class="r-row"><span>' + i.qty + 'x ' + i.name + '</span><span>' + fmt(i.selling_price * i.qty) + '</span></div>'; });
@@ -1443,6 +1486,34 @@ function renderFin() {
       document.getElementById('f-pro').textContent = fmt(pro);
       document.getElementById('f-inj').textContent = fmt(totInj);
       var fb = document.getElementById('f-bal'); fb.textContent = fmt(bal); fb.style.color = bal >= 0 ? 'var(--ok)' : 'var(--err)';
+
+      // ── Money breakdown by method ──
+      var mbCash = 0, mbMpesa = 0, mbCard = 0, mbCredit = 0, mbSplit = 0;
+      sales.forEach(function(s) {
+        var p = s.paid || 0;
+        var m = (s.method || '').toLowerCase();
+        if (m === 'cash') mbCash += p;
+        else if (m === 'm-pesa' || m === 'mpesa') mbMpesa += p;
+        else if (m === 'card') mbCard += p;
+        else if (m === 'credit') mbCredit += (s.balance || 0); // what's owed
+        else if (m === 'split') mbSplit += p;
+      });
+      // Also add partial payments from payment_log
+      sales.forEach(function(s) {
+        (s.payment_log || []).forEach(function(pl) {
+          var pm = (pl.method || '').toLowerCase();
+          if (pm === 'cash') mbCash += (pl.amount || 0);
+          else if (pm === 'm-pesa' || pm === 'mpesa') mbMpesa += (pl.amount || 0);
+          else if (pm === 'card') mbCard += (pl.amount || 0);
+        });
+      });
+      var mbTotal = mbCash + mbMpesa + mbCard + mbSplit;
+      document.getElementById('mb-cash').textContent = fmt(mbCash);
+      document.getElementById('mb-mpesa').textContent = fmt(mbMpesa);
+      document.getElementById('mb-card').textContent = fmt(mbCard);
+      document.getElementById('mb-credit').textContent = fmt(mbCredit);
+      document.getElementById('mb-split').textContent = fmt(mbSplit);
+      document.getElementById('mb-total').textContent = fmt(mbTotal);
       var lg = document.getElementById('fin-log');
       if (!deds.length) { lg.innerHTML = '<div class="empty">No transactions yet</div>'; return; }
       var html = '';
@@ -1482,6 +1553,43 @@ function addInjection() {
       toast('Capital injected', 'ok'); renderFin();
     }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
     .finally(function() { loading('inj-btn', false, 'Inject Capital'); });
+}
+
+function exportCSV() {
+  toast('Preparing export...', 'ok');
+  dbGet('sales', '?order=date.desc').then(function(sales) {
+    if (!sales.length) { toast('No sales to export', 'err'); return; }
+    var rows = [['Receipt Ref','Date','Customer','Items','Total','Paid','Balance','Method','Split Details']];
+    sales.forEach(function(s) {
+      var itemStr = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(' | ');
+      rows.push([
+        s.receipt_ref || '',
+        s.date || '',
+        s.customer_name || '',
+        itemStr,
+        s.total || 0,
+        s.paid || 0,
+        s.balance || 0,
+        s.method || '',
+        s.split_details || ''
+      ]);
+    });
+    var csv = rows.map(function(r) {
+      return r.map(function(v) {
+        var val = String(v).replace(/"/g, '""');
+        return val.indexOf(',') >= 0 || val.indexOf('"') >= 0 || val.indexOf('\n') >= 0 ? '"' + val + '"' : val;
+      }).join(',');
+    }).join('\n');
+    var blob = new Blob(['\uFEFF' + csv], {type: 'text/csv;charset=utf-8;'}); // BOM for Excel
+    var url = URL.createObjectURL(blob);
+    var today = new Date().toISOString().slice(0, 10);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'LizLuxe-Sales-' + today + '.csv';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Exported ' + sales.length + ' sales', 'ok');
+  }).catch(function(e) { toast('Export failed: ' + e.message, 'err'); });
 }
 
 function lockFin() { finOpen = false; pin = ''; renderFin(); }
