@@ -192,6 +192,16 @@ select option{background:#1c1c1c}
 .money-row-val{font-size:15px;font-weight:800;}
 .money-total-row{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--b2);}
 .export-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gold);cursor:pointer;margin-bottom:12px;}
+.wallet-card{background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:16px;margin-bottom:14px;}
+.wallet-title{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:12px;}
+.wallet-from-to{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+.wallet-sel{flex:1;padding:10px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);font-size:13px;color:var(--t);font-family:inherit;}
+.wallet-arrow{font-size:18px;color:var(--gold);flex-shrink:0;}
+.wallet-log{margin-top:10px;}
+.wallet-log-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--b);font-size:12px;}
+.wallet-log-row:last-child{border-bottom:none;}
+.wl-from{color:var(--err);font-size:10px;text-transform:uppercase;font-weight:700;}
+.wl-to{color:var(--ok);font-size:10px;text-transform:uppercase;font-weight:700;}
 /* ── Daily Summary ── */
 .daily-summary{background:linear-gradient(135deg,rgba(201,151,42,.15),rgba(201,151,42,.05));border:1px solid var(--b2);border-radius:var(--r);padding:16px;margin-bottom:14px;}
 .daily-summary-title{font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
@@ -428,6 +438,10 @@ select option{background:#1c1c1c}
             <div class="money-row-label"><div class="money-dot" style="background:#ff9800;"></div>Split</div>
             <div class="money-row-val" id="mb-split" style="color:#ff9800;">KES 0</div>
           </div>
+          <div class="money-row">
+            <div class="money-row-label"><div class="money-dot" style="background:#607d8b;"></div>Bank</div>
+            <div class="money-row-val" id="mb-bank" style="color:#607d8b;">KES 0</div>
+          </div>
           <div class="money-total-row">
             <span style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">Total Collected</span>
             <span style="font-size:18px;font-weight:800;color:var(--gold);" id="mb-total">KES 0</span>
@@ -444,6 +458,29 @@ select option{background:#1c1c1c}
 
         <!-- Export -->
         <button class="export-btn" onclick="exportCSV()">&#128229; Export Sales to CSV</button>
+
+        <!-- Wallet Transfer -->
+        <div class="wallet-card">
+          <div class="wallet-title">&#8646; Move Money Between Wallets</div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Use when you withdraw M-Pesa to cash, send to bank, etc.</div>
+          <div class="wallet-from-to">
+            <select class="wallet-sel" id="wt-from">
+              <option value="Cash">Cash</option>
+              <option value="M-Pesa" selected>M-Pesa</option>
+              <option value="Bank">Bank</option>
+            </select>
+            <div class="wallet-arrow">&#10132;</div>
+            <select class="wallet-sel" id="wt-to">
+              <option value="Cash" selected>Cash</option>
+              <option value="M-Pesa">M-Pesa</option>
+              <option value="Bank">Bank</option>
+            </select>
+          </div>
+          <div class="g12"><label>Amount (KES)</label><input id="wt-amt" type="number" placeholder="e.g. 500"></div>
+          <div class="g12"><label>Note (optional)</label><input id="wt-note" placeholder="e.g. Withdrew for shopping"></div>
+          <button class="btn bp bsm" onclick="recordTransfer()">&#10003; Record Transfer</button>
+          <div id="wt-log" class="wallet-log" style="margin-top:12px;display:none;"></div>
+        </div>
         <div class="card">
           <div class="ct">&#8722; Record Expense</div>
           <div class="g12"><label>Amount (KES)</label><input id="ded-amt" type="number" placeholder="500"></div>
@@ -1624,33 +1661,43 @@ function renderFin() {
       document.getElementById('f-inj').textContent = fmt(totInj);
       var fb = document.getElementById('f-bal'); fb.textContent = fmt(bal); fb.style.color = bal >= 0 ? 'var(--ok)' : 'var(--err)';
 
-      // ── Money breakdown by method ──
-      var mbCash = 0, mbMpesa = 0, mbCard = 0, mbCredit = 0, mbSplit = 0;
+      // ── Money breakdown by method + wallet adjustments ──
+      var mbCash = 0, mbMpesa = 0, mbCard = 0, mbCredit = 0, mbSplit = 0, mbBank = 0;
       sales.forEach(function(s) {
         var p = s.paid || 0;
         var m = (s.method || '').toLowerCase();
         if (m === 'cash') mbCash += p;
         else if (m === 'm-pesa' || m === 'mpesa') mbMpesa += p;
         else if (m === 'card') mbCard += p;
-        else if (m === 'credit') mbCredit += (s.balance || 0); // what's owed
+        else if (m === 'credit') mbCredit += (s.balance || 0);
         else if (m === 'split') mbSplit += p;
+        else if (m === 'bank') mbBank += p;
       });
-      // Also add partial payments from payment_log
+      // Add partial payments from payment_log
       sales.forEach(function(s) {
         (s.payment_log || []).forEach(function(pl) {
           var pm = (pl.method || '').toLowerCase();
           if (pm === 'cash') mbCash += (pl.amount || 0);
           else if (pm === 'm-pesa' || pm === 'mpesa') mbMpesa += (pl.amount || 0);
           else if (pm === 'card') mbCard += (pl.amount || 0);
+          else if (pm === 'bank') mbBank += (pl.amount || 0);
         });
       });
-      var mbTotal = mbCash + mbMpesa + mbCard + mbSplit;
-      document.getElementById('mb-cash').textContent = fmt(mbCash);
-      document.getElementById('mb-mpesa').textContent = fmt(mbMpesa);
-      document.getElementById('mb-card').textContent = fmt(mbCard);
+      // Apply wallet transfer adjustments
+      var adj = getWalletAdjustments();
+      mbCash += adj['Cash'] || 0;
+      mbMpesa += adj['M-Pesa'] || 0;
+      mbBank += adj['Bank'] || 0;
+      var mbTotal = mbCash + mbMpesa + mbCard + mbSplit + mbBank;
+      document.getElementById('mb-cash').textContent = fmt(Math.max(0, mbCash));
+      document.getElementById('mb-mpesa').textContent = fmt(Math.max(0, mbMpesa));
+      document.getElementById('mb-card').textContent = fmt(Math.max(0, mbCard));
       document.getElementById('mb-credit').textContent = fmt(mbCredit);
-      document.getElementById('mb-split').textContent = fmt(mbSplit);
+      document.getElementById('mb-split').textContent = fmt(Math.max(0, mbSplit));
+      document.getElementById('mb-bank').textContent = fmt(Math.max(0, mbBank));
       document.getElementById('mb-total').textContent = fmt(mbTotal);
+      // Render transfer log
+      renderTransferLog();
       var lg = document.getElementById('fin-log');
       if (!deds.length) { lg.innerHTML = '<div class="empty">No transactions yet</div>'; return; }
       var html = '';
@@ -1727,6 +1774,50 @@ function exportCSV() {
     URL.revokeObjectURL(url);
     toast('Exported ' + sales.length + ' sales', 'ok');
   }).catch(function(e) { toast('Export failed: ' + e.message, 'err'); });
+}
+
+function recordTransfer() {
+  var from = document.getElementById('wt-from').value;
+  var to = document.getElementById('wt-to').value;
+  var amt = parseFloat(document.getElementById('wt-amt').value);
+  var note = document.getElementById('wt-note').value.trim();
+  if (from === to) { toast('From and To must be different', 'err'); return; }
+  if (isNaN(amt) || amt <= 0) { toast('Enter a valid amount', 'err'); return; }
+  var today = new Date().toISOString().slice(0, 10);
+  var transfers = JSON.parse(localStorage.getItem('llTransfers') || '[]');
+  transfers.unshift({from: from, to: to, amount: amt, note: note, date: today});
+  localStorage.setItem('llTransfers', JSON.stringify(transfers));
+  document.getElementById('wt-amt').value = '';
+  document.getElementById('wt-note').value = '';
+  toast(fmt(amt) + ' moved from ' + from + ' to ' + to, 'ok');
+  renderTransferLog();
+  renderFin(); // refresh breakdown
+}
+
+function renderTransferLog() {
+  var transfers = JSON.parse(localStorage.getItem('llTransfers') || '[]');
+  var el = document.getElementById('wt-log');
+  if (!transfers.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  var html = '<div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:8px;">Recent Transfers</div>';
+  transfers.slice(0, 8).forEach(function(t) {
+    html += '<div class="wallet-log-row">';
+    html += '<div><div style="font-size:13px;font-weight:600;">' + fmt(t.amount) + '</div>';
+    html += '<div style="margin-top:2px;"><span class="wl-from">- ' + t.from + '</span> <span style="color:var(--t2);">→</span> <span class="wl-to">+ ' + t.to + '</span></div>';
+    if (t.note) html += '<div style="font-size:11px;color:var(--t2);margin-top:1px;">' + t.note + '</div>';
+    html += '</div><span style="color:var(--t2);font-size:11px;">' + t.date + '</span></div>';
+  });
+  el.innerHTML = html;
+}
+
+function getWalletAdjustments() {
+  var transfers = JSON.parse(localStorage.getItem('llTransfers') || '[]');
+  var adj = {Cash: 0, 'M-Pesa': 0, Bank: 0};
+  transfers.forEach(function(t) {
+    if (adj[t.from] !== undefined) adj[t.from] -= t.amount;
+    if (adj[t.to] !== undefined) adj[t.to] += t.amount;
+  });
+  return adj;
 }
 
 function lockFin() { finOpen = false; pin = ''; renderFin(); }
