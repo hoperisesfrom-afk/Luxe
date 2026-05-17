@@ -344,7 +344,7 @@ select option{background:#1c1c1c}
     </div>
 
     <div id="tab-history" class="tab">
-      <div class="g12"><input id="hist-search" placeholder="&#128269; Search customer or item..." oninput="filterHist()" style="background:var(--s2);border:1px solid var(--b);"></div>
+      <div class="g12"><input id="hist-search" placeholder="&#128269; Search customer, item or LX-XXXXX..." oninput="filterHist()" style="background:var(--s2);border:1px solid var(--b);"></div>
       <div class="date-pills">
         <button class="dpill active" onclick="setDateFilter(this,'today')">Today</button>
         <button class="dpill" onclick="setDateFilter(this,'week')">This Week</button>
@@ -485,11 +485,20 @@ select option{background:#1c1c1c}
           <div class="ct">&#8722; Record Expense</div>
           <div class="g12"><label>Amount (KES)</label><input id="ded-amt" type="number" placeholder="500"></div>
           <div class="g12"><label>Reason</label><input id="ded-rsn" placeholder="e.g. Paid myself, Rent..."></div>
-          <div class="g12"><label>Category</label>
-            <select id="ded-cat">
-              <option>Personal draw</option><option>Restock</option><option>Rent</option>
-              <option>Transport</option><option>Marketing</option><option>Other expenses</option>
-            </select>
+          <div class="fr">
+            <div><label>Category</label>
+              <select id="ded-cat">
+                <option>Personal draw</option><option>Restock</option><option>Rent</option>
+                <option>Transport</option><option>Marketing</option><option>Other expenses</option>
+              </select>
+            </div>
+            <div><label>Paid From</label>
+              <select id="ded-wallet">
+                <option value="Cash">Cash</option>
+                <option value="M-Pesa">M-Pesa</option>
+                <option value="Bank">Bank</option>
+              </select>
+            </div>
           </div>
           <button class="btn bp" id="ded-btn" onclick="addDeduction()">Record Expense</button>
         </div>
@@ -530,7 +539,19 @@ select option{background:#1c1c1c}
     <div id="sheet-lines"></div>
     <div class="rbox">
       <div class="rl"><span style="color:var(--t2)">Subtotal</span><span id="s-sub">KES 0</span></div>
+      <div class="rl" id="s-disc-row" style="display:none;"><span style="color:var(--err)">Discount</span><span id="s-disc-val" style="color:var(--err)">-KES 0</span></div>
       <div class="rl tot"><span>Total</span><span id="s-tot">KES 0</span></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
+      <div style="flex:1;"><label>Discount</label>
+        <input id="disc-amt" type="number" min="0" placeholder="0 (KES)" oninput="updateDiscount()" style="margin-bottom:0;">
+      </div>
+      <div style="flex:1;"><label>Type</label>
+        <select id="disc-type" onchange="updateDiscount()">
+          <option value="flat">KES flat</option>
+          <option value="pct">% percent</option>
+        </select>
+      </div>
     </div>
     <label style="margin-top:14px;display:block;">Payment Method</label>
     <div class="mg" id="method-grid">
@@ -640,6 +661,16 @@ var inv = [], cart = [], payMethod = 'Cash', pin = '', storedPin = '1234';
 var dateFilter = 'today', finDateFilter = 'all', custFilter = 'all';
 var finOpen = false, dMethods = {}, allSales = [], activeCat = 'All';
 var splitMode = false, lastReceiptText = '', lastReceiptRef = '', lastReceiptData = null;
+var discountAmt = 0;
+
+function updateDiscount() {
+  var v = parseFloat(document.getElementById('disc-amt').value) || 0;
+  var t = document.getElementById('disc-type').value;
+  var sub = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
+  discountAmt = t === 'pct' ? Math.round(sub * v / 100) : v;
+  discountAmt = Math.min(discountAmt, sub);
+  renderSheet();
+}
 
 function genRef() {
   var n = Math.floor(10000 + Math.random() * 90000);
@@ -672,7 +703,7 @@ function showTab(name, btn) {
   else if (name === 'sales') { loadInvQ(); initDate(); loadSalesNames(); }
   else if (name === 'history') loadHist();
   else if (name === 'debtors') loadCustomers();
-  else if (name === 'finance') renderFin();
+  else if (name === 'finance') { loadTransfers(); renderFin(); }
   if (name !== 'sales') document.getElementById('float-btn').classList.remove('on');
   else if (cart.length > 0) updateFloat();
 }
@@ -818,6 +849,7 @@ function renderInv() {
     html += '<div style="font-size:13px;color:var(--t2);margin-bottom:2px;">Stock: <strong style="color:' + (low ? errC : norC) + '">' + i.remaining + '</strong>/' + i.qty + '</div>';
     html += '<div class="inv-actions">';
     html += '<button class="btn bsm" onclick="toggleEdit(' + i.id + ')" style="flex:1;">Edit</button>';
+    html += '<button class="btn bsm bok-btn" onclick="quickRestock(' + i.id + ')" style="flex:1;">+ Restock</button>';
     html += '<button class="btn bsm bd" onclick="delItem(' + i.id + ')" style="flex:1;">Remove</button></div>';
     html += '<div class="edit-panel" id="ep-' + i.id + '">';
     html += '<div class="g12"><label>Selling Price</label><input id="es-' + i.id + '" type="number" value="' + i.selling_price + '"></div>';
@@ -870,7 +902,19 @@ function delItem(id) {
     .catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
-function initDate() { var d = document.getElementById('sale-date'); if (!d.value) d.value = new Date().toISOString().slice(0, 10); }
+function quickRestock(id) {
+  var item = inv.find(function(i) { return i.id === id; });
+  if (!item) return;
+  var n = prompt('How many units to add to "' + item.name + '"?', '');
+  var qty = parseInt(n);
+  if (!n || isNaN(qty) || qty <= 0) return;
+  dbPatch('inventory', {qty: item.qty + qty, remaining: item.remaining + qty}, '?id=eq.' + id)
+    .then(function() {
+      item.qty += qty; item.remaining += qty;
+      renderInv(); checkLow();
+      toast('+' + qty + ' added to ' + item.name, 'ok');
+    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
 
 function loadSalesNames() {
   if (allSales.length) return;
@@ -962,7 +1006,8 @@ function renderCart() {
 }
 
 function renderSheet() {
-  var total = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
+  var sub = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
+  var total = Math.max(0, sub - discountAmt);
   var html = '';
   cart.forEach(function(c) {
     html += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:14px;border-bottom:1px solid var(--b3)">';
@@ -970,7 +1015,10 @@ function renderSheet() {
     html += '<span style="font-weight:700;">' + fmt(c.sp * c.qty) + '</span></div>';
   });
   document.getElementById('sheet-lines').innerHTML = html;
-  document.getElementById('s-sub').textContent = fmt(total);
+  document.getElementById('s-sub').textContent = fmt(sub);
+  var dr = document.getElementById('s-disc-row');
+  if (discountAmt > 0) { dr.style.display = 'flex'; document.getElementById('s-disc-val').textContent = '-' + fmt(discountAmt); }
+  else { dr.style.display = 'none'; }
   document.getElementById('s-tot').textContent = fmt(total);
 }
 
@@ -1047,9 +1095,8 @@ function completeSale() {
   if (!cart.length) { toast('Add at least one item', 'err'); return; }
   var cust = document.getElementById('sale-cust').value.trim() || 'Walk-in';
   var date = document.getElementById('sale-date').value || new Date().toISOString().slice(0, 10);
-  var total = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
+  var total = Math.max(0, cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0) - discountAmt);
   var paid, method, splitDetails = null;
-
   if (splitMode) {
     var cash = parseFloat(document.getElementById('sp-cash').value) || 0;
     var mpesa = parseFloat(document.getElementById('sp-mpesa').value) || 0;
@@ -1098,6 +1145,8 @@ function completeSale() {
       document.getElementById('sp-mpesa').value = '';
       document.getElementById('sp-card').value = '';
       splitMode = false;
+      discountAmt = 0;
+      document.getElementById('disc-amt').value = '';
       document.getElementById('split-panel').classList.remove('on');
       document.getElementById('split-toggle').classList.remove('on');
       document.getElementById('split-toggle-icon').textContent = '+';
@@ -1167,7 +1216,8 @@ function filterHist() {
   var range = getDateRange();
   var list = allSales.filter(function(s) {
     var matchQ = !q || s.customer_name.toLowerCase().indexOf(q) >= 0 ||
-      (s.items || []).some(function(i) { return i.name.toLowerCase().indexOf(q) >= 0; });
+      (s.items || []).some(function(i) { return i.name.toLowerCase().indexOf(q) >= 0; }) ||
+      (s.receipt_ref || '').toLowerCase().indexOf(q) >= 0;
     var matchD = !range || (s.date >= range.from && s.date <= range.to);
     return matchQ && matchD;
   });
@@ -1196,6 +1246,7 @@ function filterHist() {
     html += '<span style="font-weight:700;font-size:13px;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' + (s.balance > 0 ? 'Owes ' + fmt(s.balance) : 'Paid in full') + '</span></div>';
     html += '<div style="display:flex;gap:8px;">';
     html += '<button class="btn bsm" onclick="toggleEditSale(' + s.id + ')" style="flex:1;">&#9998; Edit</button>';
+    html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617; Return</button>';
     html += '<button class="btn bsm bd" onclick="deleteSale(' + s.id + ')" style="flex:1;">&#128465; Delete</button></div>';
     html += '<div class="edit-sale-panel" id="esp-' + s.id + '">';
     html += '<div class="g12"><label>Customer Name</label><input id="esn-' + s.id + '" value="' + s.customer_name + '"></div>';
@@ -1578,9 +1629,28 @@ function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fully
   }, 'image/png');
 }
 
-function loadDebt() { loadCustomers(); }
+function returnSale(id) {
+  var sale = allSales.find(function(s) { return s.id === id; });
+  if (!sale) return;
+  var itemList = (sale.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
+  if (!confirm('Process return for ' + sale.customer_name + '?\n' + itemList + '\nTotal: ' + fmt(sale.total) + '\n\nThis will restore stock and mark sale as returned.')) return;
+  // Restore inventory stock
+  var ps = (sale.items || []).map(function(i) {
+    var it = inv.find(function(iv) { return iv.id === i.id; });
+    if (!it) return Promise.resolve();
+    var nr = it.remaining + i.qty;
+    return dbPatch('inventory', {remaining: nr}, '?id=eq.' + i.id).then(function() { it.remaining = nr; });
+  });
+  // Mark sale as returned (zero out paid, set balance to 0, add note)
+  ps.push(dbPatch('sales', {paid: 0, balance: 0, method: 'Returned', customer_name: sale.customer_name + ' [RETURNED]'}, '?id=eq.' + id));
+  Promise.all(ps).then(function() {
+    toast('Return processed — stock restored', 'ok');
+    allSales = []; allCustomerSales = [];
+    loadHist(); checkLow();
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
 
-function selDM(el, key, m) {
+function loadDebt() { loadCustomers(); }
   el.closest('.mg').querySelectorAll('.mb').forEach(function(b) { b.classList.remove('sel'); });
   el.classList.add('sel'); dMethods[key] = m;
 }
@@ -1670,8 +1740,19 @@ function renderFin() {
         else if (m === 'm-pesa' || m === 'mpesa') mbMpesa += p;
         else if (m === 'card') mbCard += p;
         else if (m === 'credit') mbCredit += (s.balance || 0);
-        else if (m === 'split') mbSplit += p;
         else if (m === 'bank') mbBank += p;
+        else if (m === 'split') {
+          // Parse split_details to distribute correctly e.g. "Cash KES 200 + M-Pesa KES 300"
+          var sd = s.split_details || '';
+          var cashM = sd.match(/Cash[^+]*?(\d[\d,]*)/i);
+          var mpesaM = sd.match(/M-Pesa[^+]*?(\d[\d,]*)/i);
+          var cardM = sd.match(/Card[^+]*?(\d[\d,]*)/i);
+          if (cashM) mbCash += parseFloat(cashM[1].replace(/,/g,''));
+          if (mpesaM) mbMpesa += parseFloat(mpesaM[1].replace(/,/g,''));
+          if (cardM) mbCard += parseFloat(cardM[1].replace(/,/g,''));
+          // If we couldn't parse, fall back to split bucket
+          if (!cashM && !mpesaM && !cardM) mbSplit += p;
+        }
       });
       // Add partial payments from payment_log
       sales.forEach(function(s) {
@@ -1682,6 +1763,13 @@ function renderFin() {
           else if (pm === 'card') mbCard += (pl.amount || 0);
           else if (pm === 'bank') mbBank += (pl.amount || 0);
         });
+      });
+      // Apply expense wallet deductions
+      deds.filter(function(d) { return d.type !== 'injection'; }).forEach(function(d) {
+        var w = (d.wallet || 'Cash');
+        if (w === 'Cash') mbCash -= (d.amount || 0);
+        else if (w === 'M-Pesa') mbMpesa -= (d.amount || 0);
+        else if (w === 'Bank') mbBank -= (d.amount || 0);
       });
       // Apply wallet transfer adjustments
       var adj = getWalletAdjustments();
@@ -1716,9 +1804,10 @@ function addDeduction() {
   var amt = parseFloat(document.getElementById('ded-amt').value);
   var rsn = document.getElementById('ded-rsn').value.trim();
   var cat = document.getElementById('ded-cat').value;
+  var wallet = document.getElementById('ded-wallet').value;
   if (isNaN(amt) || amt <= 0 || !rsn) { toast('Fill in amount and reason', 'err'); return; }
   loading('ded-btn', true);
-  dbPost('deductions', {amount: amt, reason: rsn, category: cat, type: 'expense', date: new Date().toISOString().slice(0, 10)})
+  dbPost('deductions', {amount: amt, reason: rsn, category: cat, type: 'expense', wallet: wallet, date: new Date().toISOString().slice(0, 10)})
     .then(function() {
       document.getElementById('ded-amt').value = ''; document.getElementById('ded-rsn').value = '';
       toast('Expense recorded', 'ok'); renderFin();
@@ -1784,26 +1873,34 @@ function recordTransfer() {
   if (from === to) { toast('From and To must be different', 'err'); return; }
   if (isNaN(amt) || amt <= 0) { toast('Enter a valid amount', 'err'); return; }
   var today = new Date().toISOString().slice(0, 10);
-  var transfers = JSON.parse(localStorage.getItem('llTransfers') || '[]');
-  transfers.unshift({from: from, to: to, amount: amt, note: note, date: today});
-  localStorage.setItem('llTransfers', JSON.stringify(transfers));
-  document.getElementById('wt-amt').value = '';
-  document.getElementById('wt-note').value = '';
-  toast(fmt(amt) + ' moved from ' + from + ' to ' + to, 'ok');
-  renderTransferLog();
-  renderFin(); // refresh breakdown
+  dbPost('transfers', {from_wallet: from, to_wallet: to, amount: amt, note: note, date: today})
+    .then(function() {
+      document.getElementById('wt-amt').value = '';
+      document.getElementById('wt-note').value = '';
+      toast(fmt(amt) + ' moved from ' + from + ' to ' + to, 'ok');
+      loadTransfers();
+    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
+
+var _transfers = [];
+
+function loadTransfers() {
+  dbGet('transfers', '?order=id.desc').then(function(data) {
+    _transfers = data || [];
+    renderTransferLog();
+    renderFin();
+  }).catch(function() { _transfers = []; });
 }
 
 function renderTransferLog() {
-  var transfers = JSON.parse(localStorage.getItem('llTransfers') || '[]');
   var el = document.getElementById('wt-log');
-  if (!transfers.length) { el.style.display = 'none'; return; }
+  if (!_transfers.length) { el.style.display = 'none'; return; }
   el.style.display = 'block';
   var html = '<div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:8px;">Recent Transfers</div>';
-  transfers.slice(0, 8).forEach(function(t) {
+  _transfers.slice(0, 8).forEach(function(t) {
     html += '<div class="wallet-log-row">';
     html += '<div><div style="font-size:13px;font-weight:600;">' + fmt(t.amount) + '</div>';
-    html += '<div style="margin-top:2px;"><span class="wl-from">- ' + t.from + '</span> <span style="color:var(--t2);">→</span> <span class="wl-to">+ ' + t.to + '</span></div>';
+    html += '<div style="margin-top:2px;"><span class="wl-from">- ' + t.from_wallet + '</span> <span style="color:var(--t2);">→</span> <span class="wl-to">+ ' + t.to_wallet + '</span></div>';
     if (t.note) html += '<div style="font-size:11px;color:var(--t2);margin-top:1px;">' + t.note + '</div>';
     html += '</div><span style="color:var(--t2);font-size:11px;">' + t.date + '</span></div>';
   });
@@ -1811,11 +1908,10 @@ function renderTransferLog() {
 }
 
 function getWalletAdjustments() {
-  var transfers = JSON.parse(localStorage.getItem('llTransfers') || '[]');
   var adj = {Cash: 0, 'M-Pesa': 0, Bank: 0};
-  transfers.forEach(function(t) {
-    if (adj[t.from] !== undefined) adj[t.from] -= t.amount;
-    if (adj[t.to] !== undefined) adj[t.to] += t.amount;
+  _transfers.forEach(function(t) {
+    if (adj[t.from_wallet] !== undefined) adj[t.from_wallet] -= t.amount;
+    if (adj[t.to_wallet] !== undefined) adj[t.to_wallet] += t.amount;
   });
   return adj;
 }
