@@ -1651,6 +1651,8 @@ function returnSale(id) {
 }
 
 function loadDebt() { loadCustomers(); }
+
+function selDM(el, key, m) {
   el.closest('.mg').querySelectorAll('.mb').forEach(function(b) { b.classList.remove('sel'); });
   el.classList.add('sel'); dMethods[key] = m;
 }
