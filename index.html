@@ -1766,14 +1766,7 @@ function renderFin() {
           else if (pm === 'bank') mbBank += (pl.amount || 0);
         });
       });
-      // Apply expense wallet deductions
-      deds.filter(function(d) { return d.type !== 'injection'; }).forEach(function(d) {
-        var w = (d.wallet || 'Cash');
-        if (w === 'Cash') mbCash -= (d.amount || 0);
-        else if (w === 'M-Pesa') mbMpesa -= (d.amount || 0);
-        else if (w === 'Bank') mbBank -= (d.amount || 0);
-      });
-      // Apply wallet transfer adjustments
+      // Apply wallet transfer adjustments only
       var adj = getWalletAdjustments();
       mbCash += adj['Cash'] || 0;
       mbMpesa += adj['M-Pesa'] || 0;
