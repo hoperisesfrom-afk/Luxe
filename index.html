@@ -202,6 +202,19 @@ select option{background:#1c1c1c}
 .wallet-log-row:last-child{border-bottom:none;}
 .wl-from{color:var(--err);font-size:10px;text-transform:uppercase;font-weight:700;}
 .wl-to{color:var(--ok);font-size:10px;text-transform:uppercase;font-weight:700;}
+/* ── Restock Modal ── */
+.restock-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:850;display:none;align-items:flex-end;justify-content:center;}
+.restock-modal.on{display:flex;}
+.restock-box{background:var(--s);border:1px solid var(--b);border-radius:var(--r) var(--r) 0 0;padding:24px;width:100%;max-width:480px;}
+/* ── Edit Sale Items Modal ── */
+.edit-items-modal{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:850;display:none;flex-direction:column;overflow:hidden;}
+.edit-items-modal.on{display:flex;}
+.edit-items-body{flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch;}
+/* ── P&L Report ── */
+.pl-section{background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);padding:14px;margin-bottom:10px;}
+.pl-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b3);font-size:13px;}
+.pl-row:last-child{border-bottom:none;}
+.pl-total{display:flex;justify-content:space-between;padding:10px 0 0;font-weight:800;font-size:15px;border-top:2px solid var(--b2);margin-top:4px;}
 /* ── Daily Summary ── */
 .daily-summary{background:linear-gradient(135deg,rgba(201,151,42,.15),rgba(201,151,42,.05));border:1px solid var(--b2);border-radius:var(--r);padding:16px;margin-bottom:14px;}
 .daily-summary-title{font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
@@ -458,6 +471,8 @@ select option{background:#1c1c1c}
 
         <!-- Export -->
         <button class="export-btn" onclick="exportCSV()">&#128229; Export Sales to CSV</button>
+        <button class="export-btn" onclick="showPL()" style="color:var(--ok);border-color:rgba(123,201,80,.3);">&#128202; Monthly P&amp;L Report</button>
+        <button class="export-btn" onclick="shareWhatsAppSummary()" style="color:#25d366;border-color:rgba(37,211,102,.3);">&#128232; Share Today's Summary on WhatsApp</button>
 
         <!-- Wallet Transfer -->
         <div class="wallet-card">
@@ -634,6 +649,46 @@ select option{background:#1c1c1c}
     <div id="cd-history"></div>
   </div>
 </div>
+<!-- ══ RESTOCK MODAL ══ -->
+<div class="restock-modal" id="restock-modal">
+  <div class="restock-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="font-size:16px;font-weight:700;color:var(--gold);" id="restock-title">Restock Item</div>
+      <button onclick="closeRestockModal()" style="background:none;border:none;color:var(--t2);font-size:22px;cursor:pointer;">&#10005;</button>
+    </div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:14px;" id="restock-stock"></div>
+    <label>Units to Add</label>
+    <input id="restock-qty" type="number" min="1" placeholder="e.g. 10" style="margin-bottom:12px;">
+    <label>Buying Price per Unit (KES)</label>
+    <input id="restock-price" type="number" min="0" placeholder="Leave blank to keep current" style="margin-bottom:12px;">
+    <div style="background:var(--gold-bg);border:1px solid var(--b2);border-radius:var(--rs);padding:10px;margin-bottom:14px;font-size:12px;color:var(--t2);">
+      &#9432; This will also record an expense in Finance automatically.
+    </div>
+    <button class="btn bp" id="restock-btn" onclick="confirmRestock()">&#10003; Add Stock</button>
+  </div>
+</div>
+
+<!-- ══ EDIT SALE ITEMS MODAL ══ -->
+<div class="edit-items-modal" id="edit-items-modal">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+    <button onclick="closeEditItems()" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+    <div style="font-weight:700;font-size:16px;">Edit Sale Items</div>
+  </div>
+  <div class="edit-items-body" id="edit-items-body"></div>
+</div>
+
+<!-- ══ MONTHLY P&L MODAL ══ -->
+<div class="edit-items-modal" id="pl-modal">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button onclick="document.getElementById('pl-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+      <div style="font-weight:700;font-size:16px;">Monthly P&amp;L Report</div>
+    </div>
+    <button onclick="sharePL()" style="background:none;border:none;color:var(--gold);font-size:20px;cursor:pointer;">&#128279;</button>
+  </div>
+  <div class="edit-items-body" id="pl-body"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -902,18 +957,167 @@ function delItem(id) {
     .catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
+var _restockId = null;
 function quickRestock(id) {
   var item = inv.find(function(i) { return i.id === id; });
   if (!item) return;
-  var n = prompt('How many units to add to "' + item.name + '"?', '');
-  var qty = parseInt(n);
-  if (!n || isNaN(qty) || qty <= 0) return;
-  dbPatch('inventory', {qty: item.qty + qty, remaining: item.remaining + qty}, '?id=eq.' + id)
+  _restockId = id;
+  document.getElementById('restock-title').textContent = '+ Restock: ' + item.name;
+  document.getElementById('restock-stock').textContent = 'Current stock: ' + item.remaining + ' / ' + item.qty + ' units · Buy price: ' + fmt(item.buying_price);
+  document.getElementById('restock-qty').value = '';
+  document.getElementById('restock-price').value = '';
+  document.getElementById('restock-modal').classList.add('on');
+}
+function closeRestockModal() { document.getElementById('restock-modal').classList.remove('on'); _restockId = null; }
+function confirmRestock() {
+  var item = inv.find(function(i) { return i.id === _restockId; });
+  if (!item) return;
+  var qty = parseInt(document.getElementById('restock-qty').value);
+  var price = parseFloat(document.getElementById('restock-price').value) || item.buying_price;
+  if (isNaN(qty) || qty <= 0) { toast('Enter units to add', 'err'); return; }
+  var btn = document.getElementById('restock-btn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  var today = new Date().toISOString().slice(0, 10);
+  var cost = qty * price;
+  // Update inventory
+  dbPatch('inventory', {qty: item.qty + qty, remaining: item.remaining + qty, buying_price: price}, '?id=eq.' + _restockId)
     .then(function() {
-      item.qty += qty; item.remaining += qty;
+      // Auto-record expense
+      return dbPost('deductions', {amount: cost, reason: 'Restock: ' + item.name, category: 'Restock', type: 'expense', wallet: 'M-Pesa', date: today});
+    })
+    .then(function() {
+      item.qty += qty; item.remaining += qty; item.buying_price = price;
       renderInv(); checkLow();
-      toast('+' + qty + ' added to ' + item.name, 'ok');
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+      closeRestockModal();
+      toast('+' + qty + ' ' + item.name + ' · KES ' + cost + ' recorded', 'ok');
+    }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
+    .finally(function() { btn.disabled = false; btn.textContent = '✓ Add Stock'; });
+}
+
+// ── Edit Sale Items ──
+var _editItemsSaleId = null;
+function openEditItems(id) {
+  var sale = allSales.find(function(s) { return s.id === id; });
+  if (!sale) return;
+  _editItemsSaleId = id;
+  var html = '<div style="padding-bottom:16px;">';
+  html += '<div style="font-size:13px;color:var(--t2);margin-bottom:16px;">Customer: <strong style="color:var(--t);">' + sale.customer_name + '</strong> · ' + sale.date + '</div>';
+  html += '<div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:10px;">Current Items</div>';
+  (sale.items || []).forEach(function(item, idx) {
+    html += '<div style="background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">';
+    html += '<div><div style="font-weight:600;">' + item.name + '</div>';
+    html += '<div style="font-size:12px;color:var(--t2);">' + fmt(item.selling_price) + ' each</div></div>';
+    html += '<div style="display:flex;align-items:center;gap:10px;">';
+    html += '<input type="number" id="ei-qty-' + idx + '" value="' + item.qty + '" min="0" style="width:64px;text-align:center;padding:8px;">';
+    html += '<span style="font-weight:700;color:var(--gold);min-width:70px;text-align:right;">' + fmt(item.selling_price * item.qty) + '</span>';
+    html += '</div></div>';
+  });
+  html += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--b2);">';
+  html += '<div style="font-size:12px;color:var(--t2);margin-bottom:12px;">&#9432; Set quantity to 0 to remove an item.</div>';
+  html += '<button class="btn bp" onclick="saveEditItems(' + id + ')">Save Item Changes</button>';
+  html += '</div></div>';
+  document.getElementById('edit-items-body').innerHTML = html;
+  document.getElementById('edit-items-modal').classList.add('on');
+}
+function closeEditItems() { document.getElementById('edit-items-modal').classList.remove('on'); _editItemsSaleId = null; }
+function saveEditItems(id) {
+  var sale = allSales.find(function(s) { return s.id === id; });
+  if (!sale) return;
+  var newItems = [], newTotal = 0, stockPs = [];
+  (sale.items || []).forEach(function(item, idx) {
+    var newQty = parseInt(document.getElementById('ei-qty-' + idx).value) || 0;
+    var diff = newQty - item.qty;
+    if (newQty > 0) {
+      newItems.push({id: item.id, name: item.name, qty: newQty, selling_price: item.selling_price, buying_price: item.buying_price});
+      newTotal += item.selling_price * newQty;
+    }
+    if (diff !== 0) {
+      var invItem = inv.find(function(i) { return i.id === item.id; });
+      if (invItem) {
+        var newRem = Math.max(0, invItem.remaining - diff);
+        stockPs.push(dbPatch('inventory', {remaining: newRem}, '?id=eq.' + item.id).then(function() { invItem.remaining = newRem; }));
+      }
+    }
+  });
+  if (!newItems.length) { toast('Sale must have at least one item', 'err'); return; }
+  var newBalance = Math.max(0, newTotal - (sale.paid || 0));
+  Promise.all(stockPs).then(function() {
+    return dbPatch('sales', {items: newItems, total: newTotal, balance: newBalance}, '?id=eq.' + id);
+  }).then(function() {
+    toast('Sale updated ✓', 'ok'); allSales = []; allCustomerSales = [];
+    closeEditItems(); loadHist(); checkLow();
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
+
+// ── WhatsApp Daily Summary ──
+function shareWhatsAppSummary() {
+  var today = new Date().toISOString().slice(0, 10);
+  dbGet('sales', '?date=eq.' + today + '&select=paid,items,balance,method,customer_name,total').then(function(sales) {
+    var s = sales.filter(function(x) { return (x.method||'') !== 'Returned'; });
+    var rev = s.reduce(function(a,x){return a+(x.paid||0);},0);
+    var cogs = s.reduce(function(a,x){return a+(x.items||[]).reduce(function(ss,i){return ss+(i.buying_price||0)*i.qty;},0);},0);
+    var profit = rev - cogs;
+    var credit = s.reduce(function(a,x){return a+(x.balance||0);},0);
+    var cash = s.filter(function(x){return (x.method||'').toLowerCase()==='cash';}).reduce(function(a,x){return a+(x.paid||0);},0);
+    var mpesa = s.filter(function(x){return (x.method||'').toLowerCase()==='m-pesa';}).reduce(function(a,x){return a+(x.paid||0);},0);
+    var d = new Date(); var dateStr = d.toLocaleDateString('en-KE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    var msg = '🌟 *LIZ LUXE — Daily Summary*\n📅 ' + dateStr + '\n\n';
+    msg += '📊 *Sales Overview*\n• Sales: ' + s.length + '\n• Revenue: KES ' + rev.toLocaleString() + '\n• Profit: KES ' + profit.toLocaleString() + '\n\n';
+    msg += '💰 *Collected*\n• Cash: KES ' + cash.toLocaleString() + '\n• M-Pesa: KES ' + mpesa.toLocaleString() + '\n';
+    if (credit > 0) msg += '• Credit owed: KES ' + credit.toLocaleString() + '\n';
+    msg += '\n✨ _Liz Luxe POS_';
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
+
+// ── Monthly P&L ──
+function showPL() {
+  var now = new Date();
+  var month = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var monthName = now.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+  var from = month + '-01', to = now.toISOString().slice(0,10);
+  Promise.all([dbGet('sales','?date=gte.'+from+'&date=lte.'+to), dbGet('deductions','?date=gte.'+from+'&date=lte.'+to+'&order=date.asc')])
+    .then(function(r) {
+      var sales = r[0].filter(function(s){return (s.method||'')!=='Returned';}), deds = r[1];
+      var rev = sales.reduce(function(s,x){return s+(x.paid||0);},0);
+      var cogs = sales.reduce(function(s,x){return s+(x.items||[]).reduce(function(ss,i){return ss+(i.buying_price||0)*i.qty;},0);},0);
+      var profit = rev - cogs;
+      var expenses = deds.filter(function(d){return d.type!=='injection';});
+      var injections = deds.filter(function(d){return d.type==='injection';});
+      var totExp = expenses.reduce(function(s,d){return s+(d.amount||0);},0);
+      var totInj = injections.reduce(function(s,d){return s+(d.amount||0);},0);
+      var netBal = rev - totExp + totInj;
+      var credit = sales.reduce(function(s,x){return s+(x.balance||0);},0);
+      var expCats = {};
+      expenses.forEach(function(d){var c=d.category||'Other'; expCats[c]=(expCats[c]||0)+d.amount;});
+      var html = '<div style="padding:4px 0 20px;">';
+      html += '<div style="font-size:18px;font-weight:800;color:var(--gold);margin-bottom:4px;">'+monthName+'</div>';
+      html += '<div style="font-size:12px;color:var(--t2);margin-bottom:20px;">Generated '+to+'</div>';
+      html += '<div class="pl-section"><div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Revenue</div>';
+      html += '<div class="pl-row"><span>Gross Sales</span><span style="color:var(--gold);font-weight:700;">'+fmt(rev)+'</span></div>';
+      html += '<div class="pl-row"><span>Cost of Goods</span><span style="color:var(--err);">-'+fmt(cogs)+'</span></div>';
+      html += '<div class="pl-total"><span>Gross Profit</span><span style="color:var(--ok);">'+fmt(profit)+'</span></div></div>';
+      html += '<div class="pl-section"><div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Expenses</div>';
+      Object.keys(expCats).forEach(function(cat){html += '<div class="pl-row"><span>'+cat+'</span><span style="color:var(--err);">-'+fmt(expCats[cat])+'</span></div>';});
+      if (!Object.keys(expCats).length) html += '<div class="pl-row"><span style="color:var(--t2);">None recorded</span><span>'+fmt(0)+'</span></div>';
+      html += '<div class="pl-total"><span>Total Expenses</span><span style="color:var(--err);">-'+fmt(totExp)+'</span></div></div>';
+      html += '<div class="pl-section"><div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Summary</div>';
+      html += '<div class="pl-row"><span>Sales Count</span><span>'+sales.length+'</span></div>';
+      html += '<div class="pl-row"><span>Capital Injected</span><span style="color:var(--info);">+'+fmt(totInj)+'</span></div>';
+      html += '<div class="pl-row"><span>Credit Outstanding</span><span style="color:var(--err);">'+fmt(credit)+'</span></div>';
+      html += '<div class="pl-total"><span>Net Balance</span><span style="color:'+(netBal>=0?'var(--ok)':'var(--err)')+';">'+fmt(netBal)+'</span></div></div>';
+      html += '<button class="export-btn" onclick="sharePL()" style="color:#25d366;border-color:rgba(37,211,102,.3);">&#128232; Share on WhatsApp</button></div>';
+      document.getElementById('pl-body').innerHTML = html;
+      document.getElementById('pl-modal').classList.add('on');
+      window._plData = {monthName:monthName,rev:rev,cogs:cogs,profit:profit,totExp:totExp,totInj:totInj,netBal:netBal,sales:sales.length,credit:credit,expCats:expCats};
+    }).catch(function(e){toast('Error: '+e.message,'err');});
+}
+function sharePL() {
+  var d = window._plData; if (!d) return;
+  var msg = '📊 *LIZ LUXE — '+d.monthName+' P&L*\n\n💰 *Revenue*\n• Gross Sales: KES '+d.rev.toLocaleString()+'\n• Cost of Goods: -KES '+d.cogs.toLocaleString()+'\n• Gross Profit: KES '+d.profit.toLocaleString()+'\n\n📉 *Expenses: -KES '+d.totExp.toLocaleString()+'*\n';
+  Object.keys(d.expCats).forEach(function(c){msg+='• '+c+': KES '+d.expCats[c].toLocaleString()+'\n';});
+  msg+='\n📈 *Summary*\n• Sales: '+d.sales+'\n• Credit owed: KES '+d.credit.toLocaleString()+'\n• Net Balance: KES '+d.netBal.toLocaleString()+'\n\n✨ _Liz Luxe POS_';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
 function loadSalesNames() {
@@ -1196,7 +1400,8 @@ function showReceipt(cust, date, items, total, paid, balance, m, splitDetails) {
   lastReceiptData = {
     ref: lastReceiptRef, cust: cust, date: date,
     items: items, total: total, paid: paid,
-    balance: balance, method: m, splitDetails: splitDetails || null
+    balance: balance, method: m, splitDetails: splitDetails || null,
+    discount: discountAmt || 0
   };
   document.getElementById('r-overlay').classList.add('on');
 }
@@ -1246,8 +1451,9 @@ function filterHist() {
     html += '<span style="font-weight:700;font-size:13px;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' + (s.balance > 0 ? 'Owes ' + fmt(s.balance) : 'Paid in full') + '</span></div>';
     html += '<div style="display:flex;gap:8px;">';
     html += '<button class="btn bsm" onclick="toggleEditSale(' + s.id + ')" style="flex:1;">&#9998; Edit</button>';
+    html += '<button class="btn bsm" onclick="openEditItems(' + s.id + ')" style="flex:1;background:var(--gold-bg);color:var(--gold);border-color:transparent;">&#128722; Items</button>';
     html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617; Return</button>';
-    html += '<button class="btn bsm bd" onclick="deleteSale(' + s.id + ')" style="flex:1;">&#128465; Delete</button></div>';
+    html += '<button class="btn bsm bd" onclick="deleteSale(' + s.id + ')" style="flex:1;">&#128465;</button></div>';
     html += '<div class="edit-sale-panel" id="esp-' + s.id + '">';
     html += '<div class="g12"><label>Customer Name</label><input id="esn-' + s.id + '" value="' + s.customer_name + '"></div>';
     html += '<div class="g12"><label>Date</label><input type="date" id="esd-' + s.id + '" value="' + s.date + '"></div>';
@@ -1950,6 +2156,10 @@ function shareReceipt() {
     lines.push({t: 'row', l: i.qty + 'x ' + i.name, r: fmt(i.selling_price * i.qty)});
   });
   lines.push({t: 'div'});
+  if (d.discount && d.discount > 0) {
+    lines.push({t: 'row', l: 'Subtotal', r: fmt(d.total + d.discount)});
+    lines.push({t: 'row', l: 'Discount', r: '-' + fmt(d.discount), red: true});
+  }
   lines.push({t: 'total', l: 'TOTAL', r: fmt(d.total)});
   if (d.splitDetails) {
     lines.push({t: 'row', l: 'Split', r: d.splitDetails, small: true});
