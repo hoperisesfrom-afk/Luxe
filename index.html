@@ -1115,16 +1115,21 @@ function quickRestock(id) {
   document.getElementById('restock-stock').textContent = 'Current stock: ' + item.remaining + ' / ' + item.qty + ' units · Buy price: ' + fmt(item.buying_price);
   document.getElementById('restock-qty').value = '';
   document.getElementById('restock-price').value = '';
+  // Always reset toggle to ON when modal opens
+  var cb = document.getElementById('restock-autodeduct');
+  cb.checked = true;
+  document.getElementById('restock-toggle-track').style.background = 'var(--gold)';
+  document.getElementById('restock-toggle-thumb').style.transform = 'translateX(20px)';
+  document.getElementById('restock-wallet-row').style.display = 'block';
   document.getElementById('restock-modal').classList.add('on');
 }
 function toggleRestockToggle() {
   var cb = document.getElementById('restock-autodeduct');
   cb.checked = !cb.checked;
-  var track = document.getElementById('restock-toggle-track');
-  var thumb = document.getElementById('restock-toggle-thumb');
-  track.style.background = cb.checked ? 'var(--gold)' : 'var(--b2)';
-  thumb.style.transform = cb.checked ? 'translateX(20px)' : 'translateX(0)';
-  document.getElementById('restock-wallet-row').style.display = cb.checked ? 'block' : 'none';
+  var on = cb.checked;
+  document.getElementById('restock-toggle-track').style.background = on ? 'var(--gold)' : 'var(--b2)';
+  document.getElementById('restock-toggle-thumb').style.transform = on ? 'translateX(20px)' : 'translateX(0)';
+  document.getElementById('restock-wallet-row').style.display = on ? 'block' : 'none';
 }
 
 function closeRestockModal() { document.getElementById('restock-modal').classList.remove('on'); _restockId = null; }
