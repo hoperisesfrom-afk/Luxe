@@ -660,9 +660,28 @@ select option{background:#1c1c1c}
     <label>Units to Add</label>
     <input id="restock-qty" type="number" min="1" placeholder="e.g. 10" style="margin-bottom:12px;">
     <label>Buying Price per Unit (KES)</label>
-    <input id="restock-price" type="number" min="0" placeholder="Leave blank to keep current" style="margin-bottom:12px;">
-    <div style="background:var(--gold-bg);border:1px solid var(--b2);border-radius:var(--rs);padding:10px;margin-bottom:14px;font-size:12px;color:var(--t2);">
-      &#9432; This will also record an expense in Finance automatically.
+    <input id="restock-price" type="number" min="0" placeholder="Leave blank to keep current" style="margin-bottom:14px;">
+    <div style="background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);padding:12px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div>
+          <div style="font-size:13px;font-weight:600;">Auto-record expense in Finance</div>
+          <div style="font-size:11px;color:var(--t2);margin-top:2px;">Deducts restock cost from your balance</div>
+        </div>
+        <label style="position:relative;display:inline-block;width:44px;height:24px;margin:0;">
+          <input type="checkbox" id="restock-autodeduct" checked style="opacity:0;width:0;height:0;">
+          <span onclick="toggleRestockToggle()" style="position:absolute;cursor:pointer;inset:0;background:var(--gold);border-radius:24px;transition:.3s;" id="restock-toggle-track">
+            <span id="restock-toggle-thumb" style="position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;transform:translateX(20px);"></span>
+          </span>
+        </label>
+      </div>
+      <div id="restock-wallet-row">
+        <label style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">Paid From</label>
+        <select id="restock-wallet" style="margin-top:4px;">
+          <option value="M-Pesa">M-Pesa</option>
+          <option value="Cash">Cash</option>
+          <option value="Bank">Bank</option>
+        </select>
+      </div>
     </div>
     <button class="btn bp" id="restock-btn" onclick="confirmRestock()">&#10003; Add Stock</button>
   </div>
@@ -968,28 +987,40 @@ function quickRestock(id) {
   document.getElementById('restock-price').value = '';
   document.getElementById('restock-modal').classList.add('on');
 }
+function toggleRestockToggle() {
+  var cb = document.getElementById('restock-autodeduct');
+  cb.checked = !cb.checked;
+  var track = document.getElementById('restock-toggle-track');
+  var thumb = document.getElementById('restock-toggle-thumb');
+  track.style.background = cb.checked ? 'var(--gold)' : 'var(--b2)';
+  thumb.style.transform = cb.checked ? 'translateX(20px)' : 'translateX(0)';
+  document.getElementById('restock-wallet-row').style.display = cb.checked ? 'block' : 'none';
+}
+
 function closeRestockModal() { document.getElementById('restock-modal').classList.remove('on'); _restockId = null; }
+
 function confirmRestock() {
   var item = inv.find(function(i) { return i.id === _restockId; });
   if (!item) return;
   var qty = parseInt(document.getElementById('restock-qty').value);
   var price = parseFloat(document.getElementById('restock-price').value) || item.buying_price;
+  var autoDeduct = document.getElementById('restock-autodeduct').checked;
+  var wallet = document.getElementById('restock-wallet').value;
   if (isNaN(qty) || qty <= 0) { toast('Enter units to add', 'err'); return; }
   var btn = document.getElementById('restock-btn');
   btn.disabled = true; btn.textContent = 'Saving...';
   var today = new Date().toISOString().slice(0, 10);
   var cost = qty * price;
-  // Update inventory
   dbPatch('inventory', {qty: item.qty + qty, remaining: item.remaining + qty, buying_price: price}, '?id=eq.' + _restockId)
     .then(function() {
-      // Auto-record expense
-      return dbPost('deductions', {amount: cost, reason: 'Restock: ' + item.name, category: 'Restock', type: 'expense', wallet: 'M-Pesa', date: today});
+      item.qty += qty; item.remaining += qty; item.buying_price = price;
+      if (autoDeduct) {
+        return dbPost('deductions', {amount: cost, reason: 'Restock: ' + item.name, category: 'Restock', type: 'expense', wallet: wallet, date: today});
+      }
     })
     .then(function() {
-      item.qty += qty; item.remaining += qty; item.buying_price = price;
-      renderInv(); checkLow();
-      closeRestockModal();
-      toast('+' + qty + ' ' + item.name + ' · KES ' + cost + ' recorded', 'ok');
+      renderInv(); checkLow(); closeRestockModal();
+      toast('+' + qty + ' ' + item.name + (autoDeduct ? ' · ' + fmt(cost) + ' deducted' : ' · No expense recorded'), 'ok');
     }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
     .finally(function() { btn.disabled = false; btn.textContent = '✓ Add Stock'; });
 }
