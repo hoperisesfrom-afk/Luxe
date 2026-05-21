@@ -232,6 +232,32 @@ select option{background:#1c1c1c}
 .pl-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b3);font-size:13px;}
 .pl-row:last-child{border-bottom:none;}
 .pl-total{display:flex;justify-content:space-between;padding:10px 0 0;font-weight:800;font-size:15px;border-top:2px solid var(--b2);margin-top:4px;}
+/* ── Financial Ledger ── */
+.ledger-modal{position:fixed;inset:0;background:var(--s);z-index:950;display:none;flex-direction:column;overflow:hidden;}
+.ledger-modal.on{display:flex;}
+.ledger-header{background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.ledger-body{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch;}
+.ledger-day{margin-bottom:20px;}
+.ledger-day-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--gold-bg);border:1px solid var(--b2);border-radius:var(--rs);margin-bottom:8px;}
+.ledger-day-title{font-size:13px;font-weight:700;color:var(--gold);}
+.ledger-entry{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--s2);border-left:3px solid transparent;border-radius:0 var(--rs) var(--rs) 0;margin-bottom:4px;border:1px solid var(--b);border-left-width:3px;}
+.ledger-entry.l-sale{border-left-color:var(--ok);}
+.ledger-entry.l-expense{border-left-color:var(--err);}
+.ledger-entry.l-transfer{border-left-color:var(--info);}
+.ledger-entry.l-credit{border-left-color:#ff9800;}
+.ledger-entry.l-capital{border-left-color:#9c27b0;}
+.ledger-entry.l-returned{border-left-color:var(--t3);}
+.ledger-icon{font-size:16px;flex-shrink:0;margin-top:2px;}
+.ledger-desc{flex:1;min-width:0;}
+.ledger-title{font-size:13px;font-weight:600;color:var(--t);}
+.ledger-sub{font-size:11px;color:var(--t2);margin-top:2px;}
+.ledger-right{text-align:right;flex-shrink:0;}
+.ledger-amt{font-size:14px;font-weight:800;}
+.ledger-running{font-size:10px;color:var(--t2);margin-top:2px;}
+.ledger-day-summary{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.ldsum{background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);padding:6px 10px;font-size:11px;}
+.ldsum-lbl{color:var(--t2);}
+.ldsum-val{font-weight:700;}
 /* ── Daily Summary ── */
 .daily-summary{background:linear-gradient(135deg,rgba(201,151,42,.15),rgba(201,151,42,.05));border:1px solid var(--b2);border-radius:var(--r);padding:16px;margin-bottom:14px;}
 .daily-summary-title{font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
@@ -492,6 +518,7 @@ select option{background:#1c1c1c}
         <!-- Export -->
         <button class="export-btn" onclick="exportCSV()">&#128229; Export Sales to CSV</button>
         <button class="export-btn" onclick="showPL()" style="color:var(--ok);border-color:rgba(123,201,80,.3);">&#128202; Monthly P&amp;L Report</button>
+        <button class="export-btn" onclick="showLedger()" style="color:var(--gold);border-color:var(--b2);">&#128214; Full Financial Ledger</button>
         <button class="export-btn" onclick="shareWhatsAppSummary()" style="color:#25d366;border-color:rgba(37,211,102,.3);">&#128232; Share Today's Summary on WhatsApp</button>
 
         <!-- Wallet Transfer -->
@@ -744,6 +771,26 @@ select option{background:#1c1c1c}
     <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
     <div class="login-err" id="login-err"></div>
     <div class="login-hint">Your data is private and encrypted.</div>
+  </div>
+</div>
+
+<!-- ══ FINANCIAL LEDGER ══ -->
+<div class="ledger-modal" id="ledger-modal">
+  <div class="ledger-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button onclick="document.getElementById('ledger-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+      <div>
+        <div style="font-weight:700;font-size:16px;">Financial Ledger</div>
+        <div style="font-size:11px;color:var(--t2);" id="ledger-subtitle">All transactions</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <select id="ledger-month-sel" onchange="showLedger()" style="width:auto;padding:7px 10px;font-size:12px;background:var(--s3);">
+      </select>
+    </div>
+  </div>
+  <div class="ledger-body" id="ledger-body">
+    <div class="empty">Loading...</div>
   </div>
 </div>
 
@@ -1118,18 +1165,26 @@ function quickRestock(id) {
   // Always reset toggle to ON when modal opens
   var cb = document.getElementById('restock-autodeduct');
   cb.checked = true;
-  document.getElementById('restock-toggle-track').style.background = 'var(--gold)';
-  document.getElementById('restock-toggle-thumb').style.transform = 'translateX(20px)';
+  document.getElementById('restock-toggle-track').style.cssText = 'position:absolute;cursor:pointer;inset:0;border-radius:24px;transition:.3s;background:var(--gold);';
+  document.getElementById('restock-toggle-thumb').style.cssText = 'position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;transform:translateX(20px);';
   document.getElementById('restock-wallet-row').style.display = 'block';
   document.getElementById('restock-modal').classList.add('on');
 }
 function toggleRestockToggle() {
+  var track = document.getElementById('restock-toggle-track');
+  var thumb = document.getElementById('restock-toggle-thumb');
   var cb = document.getElementById('restock-autodeduct');
-  cb.checked = !cb.checked;
-  var on = cb.checked;
-  document.getElementById('restock-toggle-track').style.background = on ? 'var(--gold)' : 'var(--b2)';
-  document.getElementById('restock-toggle-thumb').style.transform = on ? 'translateX(20px)' : 'translateX(0)';
-  document.getElementById('restock-wallet-row').style.display = on ? 'block' : 'none';
+  var walletRow = document.getElementById('restock-wallet-row');
+  // Toggle state
+  var isOn = cb.checked;
+  isOn = !isOn;
+  cb.checked = isOn;
+  // Force style update with setTimeout to ensure repaint
+  setTimeout(function() {
+    track.style.cssText = 'position:absolute;cursor:pointer;inset:0;border-radius:24px;transition:.3s;background:' + (isOn ? 'var(--gold)' : '#444') + ';';
+    thumb.style.cssText = 'position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;transform:' + (isOn ? 'translateX(20px)' : 'translateX(0px)') + ';';
+    walletRow.style.display = isOn ? 'block' : 'none';
+  }, 0);
 }
 
 function closeRestockModal() { document.getElementById('restock-modal').classList.remove('on'); _restockId = null; }
@@ -1284,6 +1339,164 @@ function sharePL() {
   Object.keys(d.expCats).forEach(function(c){msg+='• '+c+': KES '+d.expCats[c].toLocaleString()+'\n';});
   msg+='\n📈 *Summary*\n• Sales: '+d.sales+'\n• Credit owed: KES '+d.credit.toLocaleString()+'\n• Net Balance: KES '+d.netBal.toLocaleString()+'\n\n✨ _Liz Luxe POS_';
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
+
+// ── Financial Ledger ──
+function showLedger() {
+  var modal = document.getElementById('ledger-modal');
+  modal.classList.add('on');
+  document.getElementById('ledger-body').innerHTML = '<div class="empty">Loading...</div>';
+
+  // Populate month selector
+  var sel = document.getElementById('ledger-month-sel');
+  var now = new Date();
+  if (sel.options.length === 0) {
+    for (var i = 0; i < 6; i++) {
+      var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      var val = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+      var label = d.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+      var opt = document.createElement('option');
+      opt.value = val; opt.textContent = label;
+      if (i === 0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  var month = sel.value;
+  var from = month + '-01';
+  var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+  var to = month + '-' + String(last.getDate()).padStart(2,'0');
+
+  document.getElementById('ledger-subtitle').textContent = new Date(from + 'T12:00:00').toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+
+  Promise.all([
+    dbGet('sales', '?date=gte.' + from + '&date=lte.' + to + '&order=date.asc'),
+    dbGet('deductions', '?date=gte.' + from + '&date=lte.' + to + '&order=date.asc'),
+    dbGet('transfers', '?date=gte.' + from + '&date=lte.' + to + '&order=id.asc')
+  ]).then(function(r) {
+    var sales = r[0], deds = r[1], transfers = r[2];
+
+    // Build unified event list
+    var events = [];
+    sales.forEach(function(s) {
+      var isReturned = (s.method||'').indexOf('Returned') >= 0;
+      events.push({
+        date: s.date, time: s.created_at || s.date,
+        type: isReturned ? 'returned' : (s.balance > 0 ? 'credit' : 'sale'),
+        title: isReturned ? 'Return — ' + s.customer_name.replace(' [RETURNED]','') : s.customer_name,
+        sub: (s.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(', ') + ' · ' + (s.method||''),
+        amount: isReturned ? 0 : (s.paid||0),
+        total: s.total||0,
+        balance: s.balance||0,
+        ref: s.receipt_ref||'',
+        sign: isReturned ? 0 : 1
+      });
+    });
+    deds.forEach(function(d) {
+      var isInj = d.type === 'injection';
+      events.push({
+        date: d.date, time: d.created_at || d.date,
+        type: isInj ? 'capital' : 'expense',
+        title: isInj ? '+ Capital: ' + (d.reason||'Injection') : '- ' + (d.reason||'Expense'),
+        sub: (d.category||'') + (d.wallet ? ' · from ' + d.wallet : ''),
+        amount: d.amount||0,
+        sign: isInj ? 1 : -1
+      });
+    });
+    transfers.forEach(function(t) {
+      events.push({
+        date: t.date, time: t.created_at || t.date,
+        type: 'transfer',
+        title: 'Transfer: ' + t.from_wallet + ' → ' + t.to_wallet,
+        sub: t.note || '',
+        amount: t.amount||0,
+        sign: 0
+      });
+    });
+
+    // Sort by date then created_at
+    events.sort(function(a,b) {
+      return (a.date+a.time).localeCompare(b.date+b.time);
+    });
+
+    // Group by date and compute running balance
+    var byDate = {};
+    var dateOrder = [];
+    events.forEach(function(e) {
+      if (!byDate[e.date]) { byDate[e.date] = []; dateOrder.push(e.date); }
+      byDate[e.date].push(e);
+    });
+
+    if (!dateOrder.length) {
+      document.getElementById('ledger-body').innerHTML = '<div class="empty">No transactions this month</div>';
+      return;
+    }
+
+    // Compute running totals
+    var runningBalance = 0;
+    var html = '';
+    dateOrder.forEach(function(date) {
+      var dayEvents = byDate[date];
+      var dayIn = 0, dayOut = 0, dayCredit = 0;
+      dayEvents.forEach(function(e) {
+        if (e.sign > 0) dayIn += e.amount;
+        else if (e.sign < 0) dayOut += e.amount;
+        else if (e.type === 'credit') dayCredit += e.balance;
+      });
+
+      var displayDate = new Date(date + 'T12:00:00').toLocaleDateString('en-KE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+
+      html += '<div class="ledger-day">';
+      html += '<div class="ledger-day-header">';
+      html += '<span class="ledger-day-title">&#128197; ' + displayDate + '</span>';
+      html += '<span style="font-size:11px;color:var(--t2);">' + dayEvents.length + ' event' + (dayEvents.length!==1?'s':'') + '</span>';
+      html += '</div>';
+
+      // Day summary chips
+      html += '<div class="ledger-day-summary">';
+      if (dayIn > 0) html += '<div class="ldsum"><span class="ldsum-lbl">In </span><span class="ldsum-val" style="color:var(--ok);">+'+fmt(dayIn)+'</span></div>';
+      if (dayOut > 0) html += '<div class="ldsum"><span class="ldsum-lbl">Out </span><span class="ldsum-val" style="color:var(--err);">-'+fmt(dayOut)+'</span></div>';
+      if (dayCredit > 0) html += '<div class="ldsum"><span class="ldsum-lbl">Credit </span><span class="ldsum-val" style="color:#ff9800;">'+fmt(dayCredit)+'</span></div>';
+      html += '</div>';
+
+      dayEvents.forEach(function(e) {
+        if (e.sign > 0) runningBalance += e.amount;
+        else if (e.sign < 0) runningBalance -= e.amount;
+
+        var icon, cls, amtColor, amtPrefix;
+        if (e.type === 'sale') { icon = '🛍'; cls = 'l-sale'; amtColor = 'var(--ok)'; amtPrefix = '+'; }
+        else if (e.type === 'credit') { icon = '📋'; cls = 'l-credit'; amtColor = '#ff9800'; amtPrefix = '+'; }
+        else if (e.type === 'expense') { icon = '💸'; cls = 'l-expense'; amtColor = 'var(--err)'; amtPrefix = '-'; }
+        else if (e.type === 'capital') { icon = '💰'; cls = 'l-capital'; amtColor = '#9c27b0'; amtPrefix = '+'; }
+        else if (e.type === 'transfer') { icon = '🔄'; cls = 'l-transfer'; amtColor = 'var(--info)'; amtPrefix = '↔'; }
+        else { icon = '↩'; cls = 'l-returned'; amtColor = 'var(--t2)'; amtPrefix = ''; }
+
+        html += '<div class="ledger-entry ' + cls + '">';
+        html += '<div class="ledger-icon">' + icon + '</div>';
+        html += '<div class="ledger-desc"><div class="ledger-title">' + e.title + '</div>';
+        if (e.sub) html += '<div class="ledger-sub">' + e.sub + '</div>';
+        if (e.ref) html += '<div class="ledger-sub" style="font-family:monospace;">' + e.ref + '</div>';
+        html += '</div>';
+        html += '<div class="ledger-right">';
+        if (e.type === 'credit') {
+          html += '<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.total)+'</div>';
+          html += '<div class="ledger-running" style="color:#ff9800;">owes '+fmt(e.balance)+'</div>';
+        } else if (e.type !== 'transfer' && e.type !== 'returned') {
+          html += '<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.amount)+'</div>';
+          html += '<div class="ledger-running">bal: '+fmt(runningBalance)+'</div>';
+        } else if (e.type === 'transfer') {
+          html += '<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.amount)+'</div>';
+        } else {
+          html += '<div class="ledger-amt" style="color:var(--t2);">Returned</div>';
+        }
+        html += '</div></div>';
+      });
+      html += '</div>';
+    });
+
+    document.getElementById('ledger-body').innerHTML = html;
+  }).catch(function(e) {
+    document.getElementById('ledger-body').innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
+  });
 }
 
 function loadSalesNames() {
