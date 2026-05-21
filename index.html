@@ -112,6 +112,23 @@ select option{background:#1c1c1c}
 .inject-bar{background:var(--ok-bg);border-radius:var(--rs);padding:10px 13px;margin-bottom:12px;border:1px solid rgba(123,201,80,.15);font-size:12px;color:var(--ok)}
 .divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--t3);font-size:10px;text-transform:uppercase;letter-spacing:.1em}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--b)}
+
+.login-screen{position:fixed;inset:0;background:#0a0a0a;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;}
+.login-screen.hidden{display:none;}
+.login-logo{font-size:36px;font-weight:800;color:var(--gold);font-style:italic;letter-spacing:1px;margin-bottom:4px;}
+.login-sub{font-size:10px;color:var(--t2);letter-spacing:4px;text-transform:uppercase;margin-bottom:48px;}
+.login-box{width:100%;max-width:340px;}
+.login-field{margin-bottom:14px;}
+.login-field label{font-size:11px;color:var(--t2);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;display:block;}
+.login-field input{width:100%;padding:13px 14px;font-size:15px;border:1px solid var(--b2);border-radius:var(--rs);background:var(--s2);color:var(--t);outline:none;}
+.login-field input:focus{border-color:var(--gold);}
+.login-btn{width:100%;padding:14px;background:var(--gold);color:#0a0a0a;border:none;border-radius:var(--rs);font-size:15px;font-weight:800;cursor:pointer;margin-top:8px;letter-spacing:.3px;}
+.login-btn:disabled{opacity:.5;cursor:not-allowed;}
+.login-err{color:var(--err);font-size:13px;text-align:center;margin-top:12px;min-height:20px;font-weight:600;}
+.login-hint{font-size:12px;color:var(--t3);text-align:center;margin-top:24px;}
+.logout-btn{background:none;border:none;color:var(--t2);font-size:12px;cursor:pointer;padding:4px 8px;border-radius:6px;}
+.logout-btn:hover{color:var(--err);}
+
 .toast{position:fixed;bottom:calc(var(--bnav) + 12px);left:14px;right:14px;max-width:452px;margin:0 auto;background:#1a1500;color:var(--gold);padding:13px 16px;border-radius:var(--rs);font-size:13px;font-weight:600;z-index:9999;opacity:0;transform:translateY(6px);transition:all .25s;pointer-events:none;border:1px solid var(--b2);text-align:center}
 .toast.on{opacity:1;transform:translateY(0)}
 .toast.ok{background:rgba(35,70,18,.97);color:var(--ok);border-color:rgba(123,201,80,.3)}
@@ -298,7 +315,10 @@ select option{background:#1c1c1c}
 <div class="shell">
   <div class="topbar">
     <div><div class="logo-name">Liz Luxe</div><div class="logo-sub">Point of Sale</div></div>
+    <div style="display:flex;align-items:center;gap:8px;">
     <div class="low-badge" id="low-badge" onclick="openLowModal()">&#9888; <span id="low-count">0</span> Low Stock</div>
+    <button class="logout-btn" onclick="doLogout()" title="Sign out">&#128275;</button>
+  </div>
   </div>
   <div class="content" id="content">
 
@@ -708,20 +728,130 @@ select option{background:#1c1c1c}
   <div class="edit-items-body" id="pl-body"></div>
 </div>
 
+
+<div class="login-screen" id="login-screen">
+  <div class="login-logo">Liz Luxe</div>
+  <div class="login-sub">Point of Sale</div>
+  <div class="login-box">
+    <div class="login-field">
+      <label>Email</label>
+      <input type="email" id="login-email" value="hoperisesfrom@gmail.com" autocomplete="email">
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-err" id="login-err"></div>
+    <div class="login-hint">Your data is private and encrypted.</div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 var SB = 'https://atydgofseradfblzrdbn.supabase.co/rest/v1';
-var KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0eWRnb2ZzZXJhZGZibHpyZGJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2ODc1NzgsImV4cCI6MjA5MzI2MzU3OH0.f9Slh4NyLDKDJ1nUQJ35GJDIKPZayhLyK9GFXSIihBc';
-var H = {};
-H['Content-Type'] = 'application/json';
-H['apikey'] = KEY;
-H['Authorization'] = 'Bearer ' + KEY;
-H['Prefer'] = 'return=representation';
+var SB_AUTH = 'https://atydgofseradfblzrdbn.supabase.co/auth/v1';
+var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0eWRnb2ZzZXJhZGZibHpyZGJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2ODc1NzgsImV4cCI6MjA5MzI2MzU3OH0.f9Slh4NyLDKDJ1nUQJ35GJDIKPZayhLyK9GFXSIihBc';
+var authToken = null;
+var refreshToken = null;
+var SESSION_KEY = 'llpos_session';
+
+function getHeaders() {
+  var h = {};
+  h['Content-Type'] = 'application/json';
+  h['apikey'] = ANON_KEY;
+  h['Authorization'] = 'Bearer ' + (authToken || ANON_KEY);
+  h['Prefer'] = 'return=representation';
+  return h;
+}
+
+function saveSession(access, refresh) {
+  authToken = access;
+  refreshToken = refresh;
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify({access: access, refresh: refresh})); } catch(e) {}
+}
+
+function clearSession() {
+  authToken = null; refreshToken = null;
+  try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+}
+
+function loadSession() {
+  try {
+    var s = localStorage.getItem(SESSION_KEY);
+    if (s) { var d = JSON.parse(s); authToken = d.access; refreshToken = d.refresh; return true; }
+  } catch(e) {}
+  return false;
+}
+
+function doLogin() {
+  var email = document.getElementById('login-email').value.trim();
+  var password = document.getElementById('login-password').value;
+  var btn = document.getElementById('login-btn');
+  var err = document.getElementById('login-err');
+  if (!email || !password) { err.textContent = 'Please enter email and password.'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in...'; err.textContent = '';
+  fetch(SB_AUTH + '/token?grant_type=password', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY},
+    body: JSON.stringify({email: email, password: password})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.access_token) {
+      saveSession(d.access_token, d.refresh_token);
+      document.getElementById('login-screen').classList.add('hidden');
+      initApp();
+    } else {
+      err.textContent = d.error_description || d.msg || 'Invalid email or password.';
+      btn.disabled = false; btn.textContent = 'Sign In';
+    }
+  }).catch(function() {
+    err.textContent = 'Network error. Check your connection.';
+    btn.disabled = false; btn.textContent = 'Sign In';
+  });
+}
+
+function doLogout() {
+  if (!confirm('Sign out of Liz Luxe POS?')) return;
+  fetch(SB_AUTH + '/logout', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + authToken}
+  }).catch(function() {}).finally(function() {
+    clearSession();
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-err').textContent = '';
+    document.getElementById('login-btn').disabled = false;
+    document.getElementById('login-btn').textContent = 'Sign In';
+  });
+}
+
+function refreshSession() {
+  if (!refreshToken) return Promise.reject('No refresh token');
+  return fetch(SB_AUTH + '/token?grant_type=refresh_token', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY},
+    body: JSON.stringify({refresh_token: refreshToken})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.access_token) { saveSession(d.access_token, d.refresh_token); return true; }
+    return false;
+  });
+}
 
 function req(method, table, body, qs) {
-  return fetch(SB + '/' + table + (qs || ''), {method: method, headers: H, body: body ? JSON.stringify(body) : undefined})
+  return fetch(SB + '/' + table + (qs || ''), {method: method, headers: getHeaders(), body: body ? JSON.stringify(body) : undefined})
     .then(function(r) {
+      if (r.status === 401) {
+        // Token expired — try refresh then retry once
+        return refreshSession().then(function(ok) {
+          if (!ok) { doLogout(); throw new Error('Session expired. Please sign in again.'); }
+          return fetch(SB + '/' + table + (qs || ''), {method: method, headers: getHeaders(), body: body ? JSON.stringify(body) : undefined})
+            .then(function(r2) {
+              if (!r2.ok) return r2.json().then(function(e) { throw new Error(e.message || 'Error ' + r2.status); });
+              return r2.text().then(function(t) { return t ? JSON.parse(t) : []; });
+            });
+        });
+      }
       if (!r.ok) return r.json().then(function(e) { throw new Error(e.message || 'Error ' + r.status); });
       return r.text().then(function(t) { return t ? JSON.parse(t) : []; });
     });
@@ -2491,10 +2621,29 @@ function fallbackCopy(text) {
   document.body.removeChild(ta);
 }
 
-// App starts locked — unlock triggers loadInv
-initDate();
-// Show lock hint with saved PIN info
-document.getElementById('lock-hint').textContent = appPin === '1234' ? 'Default PIN: 1234' : 'Enter your PIN';
+function initApp() {
+  initDate();
+  showTab('inventory', document.querySelector('.bni[data-tab=inventory]'));
+  if (document.getElementById('lock-hint')) {
+    document.getElementById('lock-hint').textContent = typeof appPin !== 'undefined' && appPin === '1234' ? 'Default PIN: 1234' : 'Enter your PIN';
+  }
+}
+
+// ── Startup: check for saved session ──
+if (loadSession()) {
+  // Have a saved token — try to use it; if expired, refresh
+  document.getElementById('login-screen').classList.add('hidden');
+  refreshSession().then(function(ok) {
+    if (ok) { initApp(); }
+    else { clearSession(); document.getElementById('login-screen').classList.remove('hidden'); }
+  }).catch(function() {
+    // Refresh failed but token might still be valid — try anyway
+    initApp();
+  });
+} else {
+  // No session — show login
+  document.getElementById('login-screen').classList.remove('hidden');
+}
 
 // PWA: Service Worker for offline caching
 if ('serviceWorker' in navigator) {
