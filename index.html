@@ -232,32 +232,6 @@ select option{background:#1c1c1c}
 .pl-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b3);font-size:13px;}
 .pl-row:last-child{border-bottom:none;}
 .pl-total{display:flex;justify-content:space-between;padding:10px 0 0;font-weight:800;font-size:15px;border-top:2px solid var(--b2);margin-top:4px;}
-/* ── Financial Ledger ── */
-.ledger-modal{position:fixed;inset:0;background:var(--s);z-index:950;display:none;flex-direction:column;overflow:hidden;}
-.ledger-modal.on{display:flex;}
-.ledger-header{background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
-.ledger-body{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch;}
-.ledger-day{margin-bottom:20px;}
-.ledger-day-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--gold-bg);border:1px solid var(--b2);border-radius:var(--rs);margin-bottom:8px;}
-.ledger-day-title{font-size:13px;font-weight:700;color:var(--gold);}
-.ledger-entry{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--s2);border-left:3px solid transparent;border-radius:0 var(--rs) var(--rs) 0;margin-bottom:4px;border:1px solid var(--b);border-left-width:3px;}
-.ledger-entry.l-sale{border-left-color:var(--ok);}
-.ledger-entry.l-expense{border-left-color:var(--err);}
-.ledger-entry.l-transfer{border-left-color:var(--info);}
-.ledger-entry.l-credit{border-left-color:#ff9800;}
-.ledger-entry.l-capital{border-left-color:#9c27b0;}
-.ledger-entry.l-returned{border-left-color:var(--t3);}
-.ledger-icon{font-size:16px;flex-shrink:0;margin-top:2px;}
-.ledger-desc{flex:1;min-width:0;}
-.ledger-title{font-size:13px;font-weight:600;color:var(--t);}
-.ledger-sub{font-size:11px;color:var(--t2);margin-top:2px;}
-.ledger-right{text-align:right;flex-shrink:0;}
-.ledger-amt{font-size:14px;font-weight:800;}
-.ledger-running{font-size:10px;color:var(--t2);margin-top:2px;}
-.ledger-day-summary{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
-.ldsum{background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);padding:6px 10px;font-size:11px;}
-.ldsum-lbl{color:var(--t2);}
-.ldsum-val{font-weight:700;}
 /* ── Daily Summary ── */
 .daily-summary{background:linear-gradient(135deg,rgba(201,151,42,.15),rgba(201,151,42,.05));border:1px solid var(--b2);border-radius:var(--r);padding:16px;margin-bottom:14px;}
 .daily-summary-title{font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}
@@ -518,7 +492,6 @@ select option{background:#1c1c1c}
         <!-- Export -->
         <button class="export-btn" onclick="exportCSV()">&#128229; Export Sales to CSV</button>
         <button class="export-btn" onclick="showPL()" style="color:var(--ok);border-color:rgba(123,201,80,.3);">&#128202; Monthly P&amp;L Report</button>
-        <button class="export-btn" onclick="showLedger()" style="color:var(--gold);border-color:var(--b2);">&#128214; Full Financial Ledger</button>
         <button class="export-btn" onclick="shareWhatsAppSummary()" style="color:#25d366;border-color:rgba(37,211,102,.3);">&#128232; Share Today's Summary on WhatsApp</button>
 
         <!-- Wallet Transfer -->
@@ -762,7 +735,7 @@ select option{background:#1c1c1c}
   <div class="login-box">
     <div class="login-field">
       <label>Email</label>
-      <input type="email" id="login-email" value="hoperisesfrom@gmail.com" autocomplete="email">
+      <input type="email" id="login-email" placeholder="Your email address" autocomplete="email">
     </div>
     <div class="login-field">
       <label>Password</label>
@@ -771,26 +744,6 @@ select option{background:#1c1c1c}
     <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
     <div class="login-err" id="login-err"></div>
     <div class="login-hint">Your data is private and encrypted.</div>
-  </div>
-</div>
-
-<!-- ══ FINANCIAL LEDGER ══ -->
-<div class="ledger-modal" id="ledger-modal">
-  <div class="ledger-header">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <button onclick="document.getElementById('ledger-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
-      <div>
-        <div style="font-weight:700;font-size:16px;">Financial Ledger</div>
-        <div style="font-size:11px;color:var(--t2);" id="ledger-subtitle">All transactions</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <select id="ledger-month-sel" onchange="showLedger()" style="width:auto;padding:7px 10px;font-size:12px;background:var(--s3);"></select>
-      <button onclick="exportLedger()" style="background:var(--gold);border:none;border-radius:var(--rs);padding:8px 12px;font-size:12px;font-weight:700;color:#0a0a0a;cursor:pointer;">&#128229; Export</button>
-    </div>
-  </div>
-  <div class="ledger-body" id="ledger-body">
-    <div class="empty">Loading...</div>
   </div>
 </div>
 
@@ -1165,26 +1118,18 @@ function quickRestock(id) {
   // Always reset toggle to ON when modal opens
   var cb = document.getElementById('restock-autodeduct');
   cb.checked = true;
-  document.getElementById('restock-toggle-track').style.cssText = 'position:absolute;cursor:pointer;inset:0;border-radius:24px;transition:.3s;background:var(--gold);';
-  document.getElementById('restock-toggle-thumb').style.cssText = 'position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;transform:translateX(20px);';
+  document.getElementById('restock-toggle-track').style.background = 'var(--gold)';
+  document.getElementById('restock-toggle-thumb').style.transform = 'translateX(20px)';
   document.getElementById('restock-wallet-row').style.display = 'block';
   document.getElementById('restock-modal').classList.add('on');
 }
 function toggleRestockToggle() {
-  var track = document.getElementById('restock-toggle-track');
-  var thumb = document.getElementById('restock-toggle-thumb');
   var cb = document.getElementById('restock-autodeduct');
-  var walletRow = document.getElementById('restock-wallet-row');
-  // Toggle state
-  var isOn = cb.checked;
-  isOn = !isOn;
-  cb.checked = isOn;
-  // Force style update with setTimeout to ensure repaint
-  setTimeout(function() {
-    track.style.cssText = 'position:absolute;cursor:pointer;inset:0;border-radius:24px;transition:.3s;background:' + (isOn ? 'var(--gold)' : '#444') + ';';
-    thumb.style.cssText = 'position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;transform:' + (isOn ? 'translateX(20px)' : 'translateX(0px)') + ';';
-    walletRow.style.display = isOn ? 'block' : 'none';
-  }, 0);
+  cb.checked = !cb.checked;
+  var on = cb.checked;
+  document.getElementById('restock-toggle-track').style.background = on ? 'var(--gold)' : 'var(--b2)';
+  document.getElementById('restock-toggle-thumb').style.transform = on ? 'translateX(20px)' : 'translateX(0)';
+  document.getElementById('restock-wallet-row').style.display = on ? 'block' : 'none';
 }
 
 function closeRestockModal() { document.getElementById('restock-modal').classList.remove('on'); _restockId = null; }
@@ -1339,423 +1284,6 @@ function sharePL() {
   Object.keys(d.expCats).forEach(function(c){msg+='• '+c+': KES '+d.expCats[c].toLocaleString()+'\n';});
   msg+='\n📈 *Summary*\n• Sales: '+d.sales+'\n• Credit owed: KES '+d.credit.toLocaleString()+'\n• Net Balance: KES '+d.netBal.toLocaleString()+'\n\n✨ _Liz Luxe POS_';
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
-}
-
-// ── Export Ledger to Excel (multi-sheet CSV packaged as XLSX via SheetJS-style raw XML) ──
-function exportLedger() {
-  var sel = document.getElementById('ledger-month-sel');
-  var month = sel ? sel.value : new Date().toISOString().slice(0,7);
-  var monthName = sel ? sel.options[sel.selectedIndex].text : month;
-  var from = month + '-01';
-  var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
-  var to = month + '-' + String(last.getDate()).padStart(2,'0');
-  toast('Preparing export...', 'ok');
-
-  Promise.all([
-    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
-    dbGet('deductions', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
-    dbGet('transfers', '?date=gte.'+from+'&date=lte.'+to+'&order=id.asc')
-  ]).then(function(r) {
-    var sales = r[0], deds = r[1], transfers = r[2];
-
-    // ── Build unified event list ──
-    var events = [];
-    sales.forEach(function(s) {
-      var isReturned = (s.method||'').indexOf('Returned') >= 0;
-      var items = (s.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(' | ');
-      var cogs = (s.items||[]).reduce(function(a,i){return a+(i.buying_price||0)*i.qty;},0);
-      events.push({
-        date: s.date,
-        type: isReturned ? 'Return' : (s.balance > 0 ? 'Credit Sale' : 'Sale'),
-        ref: s.receipt_ref || '',
-        description: (s.customer_name||'').replace(' [RETURNED]',''),
-        detail: items,
-        method: isReturned ? 'Returned' : (s.method||''),
-        wallet: '',
-        amount_in: isReturned ? 0 : (s.paid||0),
-        amount_out: 0,
-        credit_owed: isReturned ? 0 : (s.balance||0),
-        cogs: isReturned ? 0 : cogs,
-        gross_profit: isReturned ? 0 : ((s.paid||0) - cogs),
-        note: isReturned ? 'RETURNED' : ''
-      });
-    });
-
-    deds.forEach(function(d) {
-      var isInj = d.type === 'injection';
-      events.push({
-        date: d.date,
-        type: isInj ? 'Capital Injection' : 'Expense',
-        ref: '',
-        description: d.reason || (isInj ? 'Capital' : 'Expense'),
-        detail: d.category || '',
-        method: '',
-        wallet: d.wallet || '',
-        amount_in: isInj ? (d.amount||0) : 0,
-        amount_out: isInj ? 0 : (d.amount||0),
-        credit_owed: 0,
-        cogs: 0,
-        gross_profit: 0,
-        note: ''
-      });
-    });
-
-    transfers.forEach(function(t) {
-      events.push({
-        date: t.date,
-        type: 'Wallet Transfer',
-        ref: '',
-        description: t.from_wallet + ' → ' + t.to_wallet,
-        detail: t.note || '',
-        method: '',
-        wallet: t.from_wallet + ' → ' + t.to_wallet,
-        amount_in: 0,
-        amount_out: 0,
-        credit_owed: 0,
-        cogs: 0,
-        gross_profit: 0,
-        note: t.note || ''
-      });
-    });
-
-    events.sort(function(a,b){ return a.date.localeCompare(b.date); });
-
-    // Compute running balance
-    var running = 0;
-    events.forEach(function(e) {
-      running += e.amount_in - e.amount_out;
-      e.running_balance = running;
-    });
-
-    // ── Sheet 1: Transaction Log ──
-    var s1 = [
-      ['LIZ LUXE — FINANCIAL LEDGER — ' + monthName.toUpperCase()],
-      [],
-      ['Date','Type','Receipt Ref','Customer / Description','Items / Detail','Payment Method','Wallet','Amount In (KES)','Amount Out (KES)','Credit Owed (KES)','COGS (KES)','Gross Profit (KES)','Running Balance (KES)','Notes']
-    ];
-    events.forEach(function(e) {
-      s1.push([
-        e.date, e.type, e.ref, e.description, e.detail,
-        e.method, e.wallet,
-        e.amount_in || '', e.amount_out || '', e.credit_owed || '',
-        e.cogs || '', e.gross_profit || '',
-        e.running_balance, e.note
-      ]);
-    });
-
-    // ── Sheet 2: Daily Summary ──
-    var dayMap = {};
-    var dayOrder = [];
-    events.forEach(function(e) {
-      if (!dayMap[e.date]) { dayMap[e.date] = {sales:0,salesCount:0,expenses:0,capital:0,credit:0,cogs:0,transfers:0}; dayOrder.push(e.date); }
-      var d = dayMap[e.date];
-      if (e.type==='Sale'||e.type==='Credit Sale') { d.sales+=e.amount_in; d.salesCount++; d.cogs+=e.cogs; d.credit+=e.credit_owed; }
-      else if (e.type==='Expense') d.expenses+=e.amount_out;
-      else if (e.type==='Capital Injection') d.capital+=e.amount_in;
-      else if (e.type==='Wallet Transfer') d.transfers++;
-    });
-    var s2 = [
-      ['LIZ LUXE — DAILY SUMMARY — ' + monthName.toUpperCase()],
-      [],
-      ['Date','Sales Count','Revenue (KES)','COGS (KES)','Gross Profit (KES)','Expenses (KES)','Capital In (KES)','Credit Owed (KES)','Net Day (KES)']
-    ];
-    dayOrder.forEach(function(date) {
-      var d = dayMap[date];
-      var profit = d.sales - d.cogs;
-      var net = d.sales - d.expenses + d.capital;
-      s2.push([date, d.salesCount, d.sales, d.cogs, profit, d.expenses, d.capital, d.credit, net]);
-    });
-
-    // Totals row
-    var totals = s2.slice(3).reduce(function(acc, row) {
-      for (var i = 1; i < row.length; i++) acc[i] = (acc[i]||0) + (parseFloat(row[i])||0);
-      return acc;
-    }, {});
-    s2.push([]);
-    s2.push(['TOTALS', totals[1]||0, totals[2]||0, totals[3]||0, totals[4]||0, totals[5]||0, totals[6]||0, totals[7]||0, totals[8]||0]);
-
-    // ── Sheet 3: Sales by Customer ──
-    var custMap = {};
-    events.filter(function(e){return e.type==='Sale'||e.type==='Credit Sale';}).forEach(function(e) {
-      var c = e.description;
-      if (!custMap[c]) custMap[c] = {visits:0,revenue:0,cogs:0,credit:0,lastDate:''};
-      custMap[c].visits++;
-      custMap[c].revenue += e.amount_in;
-      custMap[c].cogs += e.cogs;
-      custMap[c].credit += e.credit_owed;
-      if (e.date > custMap[c].lastDate) custMap[c].lastDate = e.date;
-    });
-    var s3 = [
-      ['LIZ LUXE — SALES BY CUSTOMER — ' + monthName.toUpperCase()],
-      [],
-      ['Customer','Visits','Revenue (KES)','COGS (KES)','Gross Profit (KES)','Credit Owed (KES)','Last Purchase Date']
-    ];
-    Object.keys(custMap).sort(function(a,b){return custMap[b].revenue-custMap[a].revenue;}).forEach(function(c) {
-      var d = custMap[c];
-      s3.push([c, d.visits, d.revenue, d.cogs, d.revenue-d.cogs, d.credit, d.lastDate]);
-    });
-
-    // ── Sheet 4: Expenses Breakdown ──
-    var expCats = {};
-    events.filter(function(e){return e.type==='Expense';}).forEach(function(e) {
-      var cat = e.detail || 'Other';
-      if (!expCats[cat]) expCats[cat] = [];
-      expCats[cat].push(e);
-    });
-    var s4 = [
-      ['LIZ LUXE — EXPENSES BREAKDOWN — ' + monthName.toUpperCase()],
-      [],
-      ['Date','Category','Description','Wallet','Amount (KES)']
-    ];
-    events.filter(function(e){return e.type==='Expense';}).forEach(function(e) {
-      s4.push([e.date, e.detail, e.description, e.wallet, e.amount_out]);
-    });
-    s4.push([]);
-    var totExp = events.filter(function(e){return e.type==='Expense';}).reduce(function(s,e){return s+e.amount_out;},0);
-    s4.push(['','','','TOTAL', totExp]);
-
-    // ── Build multi-sheet Excel XML (SpreadsheetML) ──
-    function escXml(v) {
-      if (v === null || v === undefined) return '';
-      return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-
-    function sheetToXml(rows, sheetName) {
-      var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>';
-      xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
-      xml += '<Styles><Style ss:ID="H"><Font ss:Bold="1" ss:Size="13" ss:Color="#C9972A"/></Style>';
-      xml += '<Style ss:ID="B"><Font ss:Bold="1"/></Style>';
-      xml += '<Style ss:ID="G"><Font ss:Bold="1" ss:Color="#2E7D32"/></Style>';
-      xml += '<Style ss:ID="R"><Font ss:Bold="1" ss:Color="#C62828"/></Style></Styles>';
-      xml += '<Worksheet ss:Name="' + escXml(sheetName) + '"><Table>';
-      rows.forEach(function(row, ri) {
-        xml += '<Row>';
-        row.forEach(function(cell, ci) {
-          var styleId = '';
-          if (ri === 0) styleId = ' ss:StyleID="H"';
-          else if (ri === 2) styleId = ' ss:StyleID="B"';
-          else if (ri === rows.length-1 && String(cell).toUpperCase()==='TOTALS') styleId = ' ss:StyleID="B"';
-          var type = typeof cell === 'number' ? 'Number' : 'String';
-          if (cell === '' || cell === null || cell === undefined) {
-            xml += '<Cell' + styleId + '><Data ss:Type="String"></Data></Cell>';
-          } else {
-            xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(cell) + '</Data></Cell>';
-          }
-        });
-        xml += '</Row>';
-      });
-      xml += '</Table></Worksheet></Workbook>';
-      return xml;
-    }
-
-    // Create a workbook with all 4 sheets by building separate files and zipping
-    // Since true multi-sheet requires zip, we'll build a single XML with all worksheets
-    function buildWorkbook(sheets) {
-      var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>';
-      xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
-      xml += '<Styles>';
-      xml += '<Style ss:ID="H"><Font ss:Bold="1" ss:Size="13" ss:Color="#C9972A"/></Style>';
-      xml += '<Style ss:ID="B"><Font ss:Bold="1"/></Style>';
-      xml += '<Style ss:ID="T"><Font ss:Bold="1" ss:Size="11"/></Style>';
-      xml += '</Styles>';
-
-      sheets.forEach(function(s) {
-        xml += '<Worksheet ss:Name="' + escXml(s.name) + '"><Table>';
-        s.rows.forEach(function(row, ri) {
-          if (!row || !row.length) { xml += '<Row></Row>'; return; }
-          xml += '<Row>';
-          row.forEach(function(cell) {
-            var styleId = '';
-            if (ri === 0) styleId = ' ss:StyleID="H"';
-            else if (ri === 2) styleId = ' ss:StyleID="T"';
-            var val = (cell === null || cell === undefined) ? '' : cell;
-            var type = (typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)) && val.trim() !== '')) ? 'Number' : 'String';
-            if (type === 'Number' && val === '') type = 'String';
-            xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(val) + '</Data></Cell>';
-          });
-          xml += '</Row>';
-        });
-        xml += '</Table></Worksheet>';
-      });
-      xml += '</Workbook>';
-      return xml;
-    }
-
-    var workbook = buildWorkbook([
-      {name: '📋 Transactions', rows: s1},
-      {name: '📅 Daily Summary', rows: s2},
-      {name: '👥 By Customer', rows: s3},
-      {name: '💸 Expenses', rows: s4}
-    ]);
-
-    var blob = new Blob([workbook], {type: 'application/vnd.ms-excel;charset=utf-8'});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'LizLuxe-Ledger-' + monthName.replace(' ','-') + '.xls';
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('Exported ' + events.length + ' transactions ✓', 'ok');
-
-  }).catch(function(e) { toast('Export failed: ' + e.message, 'err'); });
-}
-
-function showLedger() {
-  var modal = document.getElementById('ledger-modal');
-  modal.classList.add('on');
-  document.getElementById('ledger-body').innerHTML = '<div class="empty">Loading...</div>';
-
-  // Populate month selector
-  var sel = document.getElementById('ledger-month-sel');
-  var now = new Date();
-  if (sel.options.length === 0) {
-    for (var i = 0; i < 6; i++) {
-      var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      var val = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-      var label = d.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
-      var opt = document.createElement('option');
-      opt.value = val; opt.textContent = label;
-      if (i === 0) opt.selected = true;
-      sel.appendChild(opt);
-    }
-  }
-  var month = sel.value;
-  var from = month + '-01';
-  var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
-  var to = month + '-' + String(last.getDate()).padStart(2,'0');
-
-  document.getElementById('ledger-subtitle').textContent = new Date(from + 'T12:00:00').toLocaleDateString('en-KE',{month:'long',year:'numeric'});
-
-  Promise.all([
-    dbGet('sales', '?date=gte.' + from + '&date=lte.' + to + '&order=date.asc'),
-    dbGet('deductions', '?date=gte.' + from + '&date=lte.' + to + '&order=date.asc'),
-    dbGet('transfers', '?date=gte.' + from + '&date=lte.' + to + '&order=id.asc')
-  ]).then(function(r) {
-    var sales = r[0], deds = r[1], transfers = r[2];
-
-    // Build unified event list
-    var events = [];
-    sales.forEach(function(s) {
-      var isReturned = (s.method||'').indexOf('Returned') >= 0;
-      events.push({
-        date: s.date, time: s.created_at || s.date,
-        type: isReturned ? 'returned' : (s.balance > 0 ? 'credit' : 'sale'),
-        title: isReturned ? 'Return — ' + s.customer_name.replace(' [RETURNED]','') : s.customer_name,
-        sub: (s.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(', ') + ' · ' + (s.method||''),
-        amount: isReturned ? 0 : (s.paid||0),
-        total: s.total||0,
-        balance: s.balance||0,
-        ref: s.receipt_ref||'',
-        sign: isReturned ? 0 : 1
-      });
-    });
-    deds.forEach(function(d) {
-      var isInj = d.type === 'injection';
-      events.push({
-        date: d.date, time: d.created_at || d.date,
-        type: isInj ? 'capital' : 'expense',
-        title: isInj ? '+ Capital: ' + (d.reason||'Injection') : '- ' + (d.reason||'Expense'),
-        sub: (d.category||'') + (d.wallet ? ' · from ' + d.wallet : ''),
-        amount: d.amount||0,
-        sign: isInj ? 1 : -1
-      });
-    });
-    transfers.forEach(function(t) {
-      events.push({
-        date: t.date, time: t.created_at || t.date,
-        type: 'transfer',
-        title: 'Transfer: ' + t.from_wallet + ' → ' + t.to_wallet,
-        sub: t.note || '',
-        amount: t.amount||0,
-        sign: 0
-      });
-    });
-
-    // Sort by date then created_at
-    events.sort(function(a,b) {
-      return (a.date+a.time).localeCompare(b.date+b.time);
-    });
-
-    // Group by date and compute running balance
-    var byDate = {};
-    var dateOrder = [];
-    events.forEach(function(e) {
-      if (!byDate[e.date]) { byDate[e.date] = []; dateOrder.push(e.date); }
-      byDate[e.date].push(e);
-    });
-
-    if (!dateOrder.length) {
-      document.getElementById('ledger-body').innerHTML = '<div class="empty">No transactions this month</div>';
-      return;
-    }
-
-    // Compute running totals
-    var runningBalance = 0;
-    var html = '';
-    dateOrder.forEach(function(date) {
-      var dayEvents = byDate[date];
-      var dayIn = 0, dayOut = 0, dayCredit = 0;
-      dayEvents.forEach(function(e) {
-        if (e.sign > 0) dayIn += e.amount;
-        else if (e.sign < 0) dayOut += e.amount;
-        else if (e.type === 'credit') dayCredit += e.balance;
-      });
-
-      var displayDate = new Date(date + 'T12:00:00').toLocaleDateString('en-KE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-
-      html += '<div class="ledger-day">';
-      html += '<div class="ledger-day-header">';
-      html += '<span class="ledger-day-title">&#128197; ' + displayDate + '</span>';
-      html += '<span style="font-size:11px;color:var(--t2);">' + dayEvents.length + ' event' + (dayEvents.length!==1?'s':'') + '</span>';
-      html += '</div>';
-
-      // Day summary chips
-      html += '<div class="ledger-day-summary">';
-      if (dayIn > 0) html += '<div class="ldsum"><span class="ldsum-lbl">In </span><span class="ldsum-val" style="color:var(--ok);">+'+fmt(dayIn)+'</span></div>';
-      if (dayOut > 0) html += '<div class="ldsum"><span class="ldsum-lbl">Out </span><span class="ldsum-val" style="color:var(--err);">-'+fmt(dayOut)+'</span></div>';
-      if (dayCredit > 0) html += '<div class="ldsum"><span class="ldsum-lbl">Credit </span><span class="ldsum-val" style="color:#ff9800;">'+fmt(dayCredit)+'</span></div>';
-      html += '</div>';
-
-      dayEvents.forEach(function(e) {
-        if (e.sign > 0) runningBalance += e.amount;
-        else if (e.sign < 0) runningBalance -= e.amount;
-
-        var icon, cls, amtColor, amtPrefix;
-        if (e.type === 'sale') { icon = '🛍'; cls = 'l-sale'; amtColor = 'var(--ok)'; amtPrefix = '+'; }
-        else if (e.type === 'credit') { icon = '📋'; cls = 'l-credit'; amtColor = '#ff9800'; amtPrefix = '+'; }
-        else if (e.type === 'expense') { icon = '💸'; cls = 'l-expense'; amtColor = 'var(--err)'; amtPrefix = '-'; }
-        else if (e.type === 'capital') { icon = '💰'; cls = 'l-capital'; amtColor = '#9c27b0'; amtPrefix = '+'; }
-        else if (e.type === 'transfer') { icon = '🔄'; cls = 'l-transfer'; amtColor = 'var(--info)'; amtPrefix = '↔'; }
-        else { icon = '↩'; cls = 'l-returned'; amtColor = 'var(--t2)'; amtPrefix = ''; }
-
-        html += '<div class="ledger-entry ' + cls + '">';
-        html += '<div class="ledger-icon">' + icon + '</div>';
-        html += '<div class="ledger-desc"><div class="ledger-title">' + e.title + '</div>';
-        if (e.sub) html += '<div class="ledger-sub">' + e.sub + '</div>';
-        if (e.ref) html += '<div class="ledger-sub" style="font-family:monospace;">' + e.ref + '</div>';
-        html += '</div>';
-        html += '<div class="ledger-right">';
-        if (e.type === 'credit') {
-          html += '<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.total)+'</div>';
-          html += '<div class="ledger-running" style="color:#ff9800;">owes '+fmt(e.balance)+'</div>';
-        } else if (e.type !== 'transfer' && e.type !== 'returned') {
-          html += '<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.amount)+'</div>';
-          html += '<div class="ledger-running">bal: '+fmt(runningBalance)+'</div>';
-        } else if (e.type === 'transfer') {
-          html += '<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.amount)+'</div>';
-        } else {
-          html += '<div class="ledger-amt" style="color:var(--t2);">Returned</div>';
-        }
-        html += '</div></div>';
-      });
-      html += '</div>';
-    });
-
-    document.getElementById('ledger-body').innerHTML = html;
-  }).catch(function(e) {
-    document.getElementById('ledger-body').innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
-  });
 }
 
 function loadSalesNames() {
@@ -2762,6 +2290,9 @@ var appPin = localStorage.getItem('llpin') || '1234';
 var lockPin = '';
 var lockTimer = null;
 var LOCK_MS = 5 * 60 * 1000; // 5 minutes
+var pinAttempts = 0;
+var pinLockedUntil = 0;
+var pinCountdownInterval = null;
 
 function resetLockTimer() {
   clearTimeout(lockTimer);
@@ -2770,12 +2301,12 @@ function resetLockTimer() {
 
 function lockApp() {
   clearTimeout(lockTimer);
-  lockPin = '';
+  clearInterval(pinCountdownInterval);
+  lockPin = ''; pinAttempts = 0;
   for (var i = 0; i < 4; i++) document.getElementById('lpd' + i).classList.remove('on');
   document.getElementById('lock-err').textContent = '';
   document.getElementById('lock-hint').textContent = 'Enter PIN to access';
   document.getElementById('app-lock').classList.remove('hidden');
-  // Also lock finance if open
   finOpen = false;
 }
 
@@ -2983,6 +2514,12 @@ function unlockApp() {
 }
 
 function lockPress(k) {
+  var now = Date.now();
+  if (pinLockedUntil > now) {
+    var secs = Math.ceil((pinLockedUntil - now) / 1000);
+    document.getElementById('lock-err').textContent = '🔒 Locked. Try again in ' + secs + 's';
+    return;
+  }
   if (k === 'back') lockPin = lockPin.slice(0, -1);
   else if (k === 'clear') lockPin = '';
   else if (lockPin.length < 4) lockPin += k;
@@ -2990,13 +2527,33 @@ function lockPress(k) {
   document.getElementById('lock-err').textContent = '';
   if (lockPin.length === 4) {
     if (lockPin === appPin) {
+      pinAttempts = 0; pinLockedUntil = 0;
+      clearInterval(pinCountdownInterval);
       unlockApp();
     } else {
-      document.getElementById('lock-err').textContent = 'Incorrect PIN. Try again.';
+      pinAttempts++;
+      lockPin = '';
       setTimeout(function() {
-        lockPin = '';
         for (var j = 0; j < 4; j++) document.getElementById('lpd' + j).classList.remove('on');
-      }, 800);
+      }, 400);
+      if (pinAttempts >= 3) {
+        pinLockedUntil = Date.now() + 30000;
+        pinAttempts = 0;
+        clearInterval(pinCountdownInterval);
+        pinCountdownInterval = setInterval(function() {
+          var left = Math.ceil((pinLockedUntil - Date.now()) / 1000);
+          var errEl = document.getElementById('lock-err');
+          if (left <= 0) {
+            clearInterval(pinCountdownInterval);
+            if (errEl) errEl.textContent = '';
+          } else {
+            if (errEl) errEl.textContent = '🔒 Too many attempts. Try again in ' + left + 's';
+          }
+        }, 500);
+      } else {
+        var left2 = 3 - pinAttempts;
+        document.getElementById('lock-err').textContent = 'Incorrect PIN. ' + left2 + ' attempt' + (left2 !== 1 ? 's' : '') + ' left.';
+      }
     }
   }
 }
