@@ -1573,24 +1573,52 @@ function showReceipt(cust, date, items, total, paid, balance, m, splitDetails) {
 }
 function closeReceipt() { document.getElementById('r-overlay').classList.remove('on'); }
 
+var histPage = 0;
+var histPageSize = 25;
+var histHasMore = false;
+
 function loadHist() {
+  histPage = 0;
+  allSales = [];
   document.getElementById('hist-list').innerHTML = '<div class="empty">Loading...</div>';
-  dbGet('sales', '?order=created_at.desc').then(function(data) {
-    allSales = data;
-    document.getElementById('debt-dot').classList.toggle('on', data.some(function(s) { return s.balance > 0; }));
-    filterHist();
+  fetchHistPage(true);
+}
+
+function fetchHistPage(reset) {
+  var range = getDateRange();
+  var from = histPage * histPageSize;
+  var to = from + histPageSize - 1;
+  var query = '?order=date.desc&offset=' + from + '&limit=' + histPageSize;
+  if (range) {
+    query += '&date=gte.' + range.from + '&date=lte.' + range.to;
+  }
+  var q = (document.getElementById('hist-search').value || '').toLowerCase();
+  if (q && q.startsWith('lx-')) {
+    // Search by receipt ref — fetch all and filter
+    query = '?order=date.desc&receipt_ref=ilike.*' + q + '*';
+  }
+  dbGet('sales', query).then(function(data) {
+    if (reset) allSales = data;
+    else allSales = allSales.concat(data);
+    histHasMore = data.length === histPageSize;
+    document.getElementById('debt-dot').classList.toggle('on', allSales.some(function(s) { return s.balance > 0; }));
+    renderHistList(reset);
   }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
 }
 
 function filterHist() {
+  histPage = 0; allSales = [];
+  document.getElementById('hist-list').innerHTML = '<div class="empty">Loading...</div>';
+  fetchHistPage(true);
+}
+
+function renderHistList(reset) {
   var q = (document.getElementById('hist-search').value || '').toLowerCase();
-  var range = getDateRange();
   var list = allSales.filter(function(s) {
-    var matchQ = !q || s.customer_name.toLowerCase().indexOf(q) >= 0 ||
+    if (!q) return true;
+    return s.customer_name.toLowerCase().indexOf(q) >= 0 ||
       (s.items || []).some(function(i) { return i.name.toLowerCase().indexOf(q) >= 0; }) ||
       (s.receipt_ref || '').toLowerCase().indexOf(q) >= 0;
-    var matchD = !range || (s.date >= range.from && s.date <= range.to);
-    return matchQ && matchD;
   });
   var rev = list.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
   var cogs = list.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
@@ -1600,7 +1628,7 @@ function filterHist() {
   var cntEl = document.getElementById('hist-count');
   if (revEl) revEl.textContent = fmt(rev);
   if (profEl) { profEl.textContent = fmt(profit); profEl.style.color = profit >= 0 ? 'var(--ok)' : 'var(--err)'; }
-  if (cntEl) cntEl.textContent = list.length;
+  if (cntEl) cntEl.textContent = list.length + (histHasMore ? '+' : '');
   var el = document.getElementById('hist-list');
   if (!list.length) { el.innerHTML = '<div class="empty">' + (q ? 'No results' : 'No sales for this period') + '</div>'; return; }
   var html = '';
@@ -1609,7 +1637,9 @@ function filterHist() {
     html += '<div class="sale-card" id="sc-' + s.id + '">';
     html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">';
     html += '<div><div style="font-weight:700;font-size:15px;">' + s.customer_name + '</div>';
-    html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">' + s.date + '</div></div>';
+    html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">' + s.date;
+    if (s.receipt_ref) html += ' · <span style="font-family:monospace;font-size:10px;">' + s.receipt_ref + '</span>';
+    html += '</div></div>';
     html += '<span style="font-size:17px;font-weight:800;color:var(--gold)">' + fmt(s.total) + '</span></div>';
     html += '<div style="font-size:12px;color:var(--t2);margin-bottom:8px;">' + its + '</div>';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
@@ -1626,7 +1656,15 @@ function filterHist() {
     html += '<button class="btn bp bsm" onclick="saveEditSale(' + s.id + ')">Save Changes</button></div>';
     html += '</div>';
   });
+  if (histHasMore) {
+    html += '<button onclick="loadMoreHist()" class="btn" style="width:100%;margin-top:8px;background:var(--s2);color:var(--t2);border:1px dashed var(--b2);">Load more sales ↓</button>';
+  }
   el.innerHTML = html;
+}
+
+function loadMoreHist() {
+  histPage++;
+  fetchHistPage(false);
 }
 
 function toggleEditSale(id) {
