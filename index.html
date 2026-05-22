@@ -785,8 +785,8 @@ select option{background:#1c1c1c}
       </div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
-      <select id="ledger-month-sel" onchange="showLedger()" style="width:auto;padding:7px 10px;font-size:12px;background:var(--s3);">
-      </select>
+      <select id="ledger-month-sel" onchange="showLedger()" style="width:auto;padding:7px 10px;font-size:12px;background:var(--s3);"></select>
+      <button onclick="exportLedger()" style="background:var(--gold);border:none;border-radius:var(--rs);padding:8px 12px;font-size:12px;font-weight:700;color:#0a0a0a;cursor:pointer;">&#128229; Export</button>
     </div>
   </div>
   <div class="ledger-body" id="ledger-body">
@@ -1341,7 +1341,266 @@ function sharePL() {
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
-// ── Financial Ledger ──
+// ── Export Ledger to Excel (multi-sheet CSV packaged as XLSX via SheetJS-style raw XML) ──
+function exportLedger() {
+  var sel = document.getElementById('ledger-month-sel');
+  var month = sel ? sel.value : new Date().toISOString().slice(0,7);
+  var monthName = sel ? sel.options[sel.selectedIndex].text : month;
+  var from = month + '-01';
+  var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+  var to = month + '-' + String(last.getDate()).padStart(2,'0');
+  toast('Preparing export...', 'ok');
+
+  Promise.all([
+    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
+    dbGet('deductions', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
+    dbGet('transfers', '?date=gte.'+from+'&date=lte.'+to+'&order=id.asc')
+  ]).then(function(r) {
+    var sales = r[0], deds = r[1], transfers = r[2];
+
+    // ── Build unified event list ──
+    var events = [];
+    sales.forEach(function(s) {
+      var isReturned = (s.method||'').indexOf('Returned') >= 0;
+      var items = (s.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(' | ');
+      var cogs = (s.items||[]).reduce(function(a,i){return a+(i.buying_price||0)*i.qty;},0);
+      events.push({
+        date: s.date,
+        type: isReturned ? 'Return' : (s.balance > 0 ? 'Credit Sale' : 'Sale'),
+        ref: s.receipt_ref || '',
+        description: (s.customer_name||'').replace(' [RETURNED]',''),
+        detail: items,
+        method: isReturned ? 'Returned' : (s.method||''),
+        wallet: '',
+        amount_in: isReturned ? 0 : (s.paid||0),
+        amount_out: 0,
+        credit_owed: isReturned ? 0 : (s.balance||0),
+        cogs: isReturned ? 0 : cogs,
+        gross_profit: isReturned ? 0 : ((s.paid||0) - cogs),
+        note: isReturned ? 'RETURNED' : ''
+      });
+    });
+
+    deds.forEach(function(d) {
+      var isInj = d.type === 'injection';
+      events.push({
+        date: d.date,
+        type: isInj ? 'Capital Injection' : 'Expense',
+        ref: '',
+        description: d.reason || (isInj ? 'Capital' : 'Expense'),
+        detail: d.category || '',
+        method: '',
+        wallet: d.wallet || '',
+        amount_in: isInj ? (d.amount||0) : 0,
+        amount_out: isInj ? 0 : (d.amount||0),
+        credit_owed: 0,
+        cogs: 0,
+        gross_profit: 0,
+        note: ''
+      });
+    });
+
+    transfers.forEach(function(t) {
+      events.push({
+        date: t.date,
+        type: 'Wallet Transfer',
+        ref: '',
+        description: t.from_wallet + ' → ' + t.to_wallet,
+        detail: t.note || '',
+        method: '',
+        wallet: t.from_wallet + ' → ' + t.to_wallet,
+        amount_in: 0,
+        amount_out: 0,
+        credit_owed: 0,
+        cogs: 0,
+        gross_profit: 0,
+        note: t.note || ''
+      });
+    });
+
+    events.sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+    // Compute running balance
+    var running = 0;
+    events.forEach(function(e) {
+      running += e.amount_in - e.amount_out;
+      e.running_balance = running;
+    });
+
+    // ── Sheet 1: Transaction Log ──
+    var s1 = [
+      ['LIZ LUXE — FINANCIAL LEDGER — ' + monthName.toUpperCase()],
+      [],
+      ['Date','Type','Receipt Ref','Customer / Description','Items / Detail','Payment Method','Wallet','Amount In (KES)','Amount Out (KES)','Credit Owed (KES)','COGS (KES)','Gross Profit (KES)','Running Balance (KES)','Notes']
+    ];
+    events.forEach(function(e) {
+      s1.push([
+        e.date, e.type, e.ref, e.description, e.detail,
+        e.method, e.wallet,
+        e.amount_in || '', e.amount_out || '', e.credit_owed || '',
+        e.cogs || '', e.gross_profit || '',
+        e.running_balance, e.note
+      ]);
+    });
+
+    // ── Sheet 2: Daily Summary ──
+    var dayMap = {};
+    var dayOrder = [];
+    events.forEach(function(e) {
+      if (!dayMap[e.date]) { dayMap[e.date] = {sales:0,salesCount:0,expenses:0,capital:0,credit:0,cogs:0,transfers:0}; dayOrder.push(e.date); }
+      var d = dayMap[e.date];
+      if (e.type==='Sale'||e.type==='Credit Sale') { d.sales+=e.amount_in; d.salesCount++; d.cogs+=e.cogs; d.credit+=e.credit_owed; }
+      else if (e.type==='Expense') d.expenses+=e.amount_out;
+      else if (e.type==='Capital Injection') d.capital+=e.amount_in;
+      else if (e.type==='Wallet Transfer') d.transfers++;
+    });
+    var s2 = [
+      ['LIZ LUXE — DAILY SUMMARY — ' + monthName.toUpperCase()],
+      [],
+      ['Date','Sales Count','Revenue (KES)','COGS (KES)','Gross Profit (KES)','Expenses (KES)','Capital In (KES)','Credit Owed (KES)','Net Day (KES)']
+    ];
+    dayOrder.forEach(function(date) {
+      var d = dayMap[date];
+      var profit = d.sales - d.cogs;
+      var net = d.sales - d.expenses + d.capital;
+      s2.push([date, d.salesCount, d.sales, d.cogs, profit, d.expenses, d.capital, d.credit, net]);
+    });
+
+    // Totals row
+    var totals = s2.slice(3).reduce(function(acc, row) {
+      for (var i = 1; i < row.length; i++) acc[i] = (acc[i]||0) + (parseFloat(row[i])||0);
+      return acc;
+    }, {});
+    s2.push([]);
+    s2.push(['TOTALS', totals[1]||0, totals[2]||0, totals[3]||0, totals[4]||0, totals[5]||0, totals[6]||0, totals[7]||0, totals[8]||0]);
+
+    // ── Sheet 3: Sales by Customer ──
+    var custMap = {};
+    events.filter(function(e){return e.type==='Sale'||e.type==='Credit Sale';}).forEach(function(e) {
+      var c = e.description;
+      if (!custMap[c]) custMap[c] = {visits:0,revenue:0,cogs:0,credit:0,lastDate:''};
+      custMap[c].visits++;
+      custMap[c].revenue += e.amount_in;
+      custMap[c].cogs += e.cogs;
+      custMap[c].credit += e.credit_owed;
+      if (e.date > custMap[c].lastDate) custMap[c].lastDate = e.date;
+    });
+    var s3 = [
+      ['LIZ LUXE — SALES BY CUSTOMER — ' + monthName.toUpperCase()],
+      [],
+      ['Customer','Visits','Revenue (KES)','COGS (KES)','Gross Profit (KES)','Credit Owed (KES)','Last Purchase Date']
+    ];
+    Object.keys(custMap).sort(function(a,b){return custMap[b].revenue-custMap[a].revenue;}).forEach(function(c) {
+      var d = custMap[c];
+      s3.push([c, d.visits, d.revenue, d.cogs, d.revenue-d.cogs, d.credit, d.lastDate]);
+    });
+
+    // ── Sheet 4: Expenses Breakdown ──
+    var expCats = {};
+    events.filter(function(e){return e.type==='Expense';}).forEach(function(e) {
+      var cat = e.detail || 'Other';
+      if (!expCats[cat]) expCats[cat] = [];
+      expCats[cat].push(e);
+    });
+    var s4 = [
+      ['LIZ LUXE — EXPENSES BREAKDOWN — ' + monthName.toUpperCase()],
+      [],
+      ['Date','Category','Description','Wallet','Amount (KES)']
+    ];
+    events.filter(function(e){return e.type==='Expense';}).forEach(function(e) {
+      s4.push([e.date, e.detail, e.description, e.wallet, e.amount_out]);
+    });
+    s4.push([]);
+    var totExp = events.filter(function(e){return e.type==='Expense';}).reduce(function(s,e){return s+e.amount_out;},0);
+    s4.push(['','','','TOTAL', totExp]);
+
+    // ── Build multi-sheet Excel XML (SpreadsheetML) ──
+    function escXml(v) {
+      if (v === null || v === undefined) return '';
+      return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function sheetToXml(rows, sheetName) {
+      var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>';
+      xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+      xml += '<Styles><Style ss:ID="H"><Font ss:Bold="1" ss:Size="13" ss:Color="#C9972A"/></Style>';
+      xml += '<Style ss:ID="B"><Font ss:Bold="1"/></Style>';
+      xml += '<Style ss:ID="G"><Font ss:Bold="1" ss:Color="#2E7D32"/></Style>';
+      xml += '<Style ss:ID="R"><Font ss:Bold="1" ss:Color="#C62828"/></Style></Styles>';
+      xml += '<Worksheet ss:Name="' + escXml(sheetName) + '"><Table>';
+      rows.forEach(function(row, ri) {
+        xml += '<Row>';
+        row.forEach(function(cell, ci) {
+          var styleId = '';
+          if (ri === 0) styleId = ' ss:StyleID="H"';
+          else if (ri === 2) styleId = ' ss:StyleID="B"';
+          else if (ri === rows.length-1 && String(cell).toUpperCase()==='TOTALS') styleId = ' ss:StyleID="B"';
+          var type = typeof cell === 'number' ? 'Number' : 'String';
+          if (cell === '' || cell === null || cell === undefined) {
+            xml += '<Cell' + styleId + '><Data ss:Type="String"></Data></Cell>';
+          } else {
+            xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(cell) + '</Data></Cell>';
+          }
+        });
+        xml += '</Row>';
+      });
+      xml += '</Table></Worksheet></Workbook>';
+      return xml;
+    }
+
+    // Create a workbook with all 4 sheets by building separate files and zipping
+    // Since true multi-sheet requires zip, we'll build a single XML with all worksheets
+    function buildWorkbook(sheets) {
+      var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>';
+      xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+      xml += '<Styles>';
+      xml += '<Style ss:ID="H"><Font ss:Bold="1" ss:Size="13" ss:Color="#C9972A"/></Style>';
+      xml += '<Style ss:ID="B"><Font ss:Bold="1"/></Style>';
+      xml += '<Style ss:ID="T"><Font ss:Bold="1" ss:Size="11"/></Style>';
+      xml += '</Styles>';
+
+      sheets.forEach(function(s) {
+        xml += '<Worksheet ss:Name="' + escXml(s.name) + '"><Table>';
+        s.rows.forEach(function(row, ri) {
+          if (!row || !row.length) { xml += '<Row></Row>'; return; }
+          xml += '<Row>';
+          row.forEach(function(cell) {
+            var styleId = '';
+            if (ri === 0) styleId = ' ss:StyleID="H"';
+            else if (ri === 2) styleId = ' ss:StyleID="T"';
+            var val = (cell === null || cell === undefined) ? '' : cell;
+            var type = (typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)) && val.trim() !== '')) ? 'Number' : 'String';
+            if (type === 'Number' && val === '') type = 'String';
+            xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(val) + '</Data></Cell>';
+          });
+          xml += '</Row>';
+        });
+        xml += '</Table></Worksheet>';
+      });
+      xml += '</Workbook>';
+      return xml;
+    }
+
+    var workbook = buildWorkbook([
+      {name: '📋 Transactions', rows: s1},
+      {name: '📅 Daily Summary', rows: s2},
+      {name: '👥 By Customer', rows: s3},
+      {name: '💸 Expenses', rows: s4}
+    ]);
+
+    var blob = new Blob([workbook], {type: 'application/vnd.ms-excel;charset=utf-8'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'LizLuxe-Ledger-' + monthName.replace(' ','-') + '.xls';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Exported ' + events.length + ' transactions ✓', 'ok');
+
+  }).catch(function(e) { toast('Export failed: ' + e.message, 'err'); });
+}
+
 function showLedger() {
   var modal = document.getElementById('ledger-modal');
   modal.classList.add('on');
