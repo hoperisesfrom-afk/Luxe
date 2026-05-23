@@ -429,127 +429,142 @@ select option{background:#1c1c1c}
             <button class="pk" onclick="pinPress('clear')" style="font-size:11px;">CLR</button>
           </div>
           <div class="perr" id="pin-err"></div>
-          <div style="margin-top:18px;font-size:12px;color:var(--t3);">Default PIN: 1234</div>
+          <div style="margin-top:18px;font-size:12px;color:var(--t3);" id="fin-pin-hint"></div>
         </div>
       </div>
+
       <div id="fin-content" style="display:none;">
-        <div class="daily-summary" id="fin-daily">
-          <div class="daily-summary-title">&#9728; Today's Summary</div>
-          <div class="daily-grid">
-            <div class="daily-cell"><div class="daily-val" id="fd-rev">KES 0</div><div class="daily-lbl">Revenue</div></div>
-            <div class="daily-cell"><div class="daily-val" id="fd-pro" style="color:var(--ok)">KES 0</div><div class="daily-lbl">Profit</div></div>
-            <div class="daily-cell"><div class="daily-val" id="fd-cnt" style="color:var(--t)">0</div><div class="daily-lbl">Sales</div></div>
-          </div>
-        </div>
-        <div class="fin-date-pills">
-          <button class="dpill active" id="fp-all" onclick="setFinFilter(this,'all')">All Time</button>
-          <button class="dpill" onclick="setFinFilter(this,'today')">Today</button>
-          <button class="dpill" onclick="setFinFilter(this,'week')">This Week</button>
-          <button class="dpill" onclick="setFinFilter(this,'month')">This Month</button>
+
+        <!-- ── Finance Internal Tab Bar ── -->
+        <div style="display:flex;gap:0;margin-bottom:16px;background:var(--s2);border:1px solid var(--b);border-radius:var(--r);overflow:hidden;flex-shrink:0;">
+          <button class="fin-tab-btn active" id="ftb-overview" onclick="showFinTab('overview',this)" style="flex:1;padding:11px 6px;border:none;background:var(--gold);color:#0a0a0a;font-size:12px;font-weight:700;cursor:pointer;border-radius:0;">&#128200; Overview</button>
+          <button class="fin-tab-btn" id="ftb-transactions" onclick="showFinTab('transactions',this)" style="flex:1;padding:11px 6px;border:none;background:transparent;color:var(--t2);font-size:12px;font-weight:600;cursor:pointer;border-radius:0;">&#128196; Record</button>
+          <button class="fin-tab-btn" id="ftb-reports" onclick="showFinTab('reports',this)" style="flex:1;padding:11px 6px;border:none;background:transparent;color:var(--t2);font-size:12px;font-weight:600;cursor:pointer;border-radius:0;">&#128202; Reports</button>
         </div>
 
-        <!-- Money Breakdown -->
-        <div class="money-breakdown">
-          <div class="money-breakdown-title">&#128181; Where your money is sitting</div>
-          <div class="money-row">
-            <div class="money-row-label"><div class="money-dot" style="background:#4caf50;"></div>Cash</div>
-            <div class="money-row-val" id="mb-cash" style="color:#4caf50;">KES 0</div>
-          </div>
-          <div class="money-row">
-            <div class="money-row-label"><div class="money-dot" style="background:#2196f3;"></div>M-Pesa</div>
-            <div class="money-row-val" id="mb-mpesa" style="color:#2196f3;">KES 0</div>
-          </div>
-          <div class="money-row">
-            <div class="money-row-label"><div class="money-dot" style="background:#9c27b0;"></div>Card</div>
-            <div class="money-row-val" id="mb-card" style="color:#9c27b0;">KES 0</div>
-          </div>
-          <div class="money-row">
-            <div class="money-row-label"><div class="money-dot" style="background:#f44336;"></div>Credit (Owed to you)</div>
-            <div class="money-row-val" id="mb-credit" style="color:#f44336;">KES 0</div>
-          </div>
-          <div class="money-row">
-            <div class="money-row-label"><div class="money-dot" style="background:#ff9800;"></div>Split</div>
-            <div class="money-row-val" id="mb-split" style="color:#ff9800;">KES 0</div>
-          </div>
-          <div class="money-row">
-            <div class="money-row-label"><div class="money-dot" style="background:#607d8b;"></div>Bank</div>
-            <div class="money-row-val" id="mb-bank" style="color:#607d8b;">KES 0</div>
-          </div>
-          <div class="money-total-row">
-            <span style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">Total Collected</span>
-            <span style="font-size:18px;font-weight:800;color:var(--gold);" id="mb-total">KES 0</span>
-          </div>
-        </div>
-
-        <div class="sg">
-          <div class="sc"><div class="sl">Revenue</div><div class="sv" id="f-rev" style="color:var(--gold)">KES 0</div></div>
-          <div class="sc"><div class="sl">Profit</div><div class="sv" id="f-pro" style="color:var(--ok)">KES 0</div></div>
-          <div class="sc"><div class="sl">Capital In</div><div class="sv" id="f-inj" style="color:var(--info)">KES 0</div></div>
-          <div class="sc"><div class="sl">Net Balance</div><div class="sv" id="f-bal">KES 0</div></div>
-        </div>
-        <div class="info-bar" style="font-size:12px;">Net Balance = Money Collected &minus; Expenses + Capital injected</div>
-
-        <!-- Export -->
-        <button class="export-btn" onclick="exportCSV()">&#128229; Export Sales to CSV</button>
-        <button class="export-btn" onclick="showPL()" style="color:var(--ok);border-color:rgba(123,201,80,.3);">&#128202; Monthly P&amp;L Report</button>
-        <button class="export-btn" onclick="shareWhatsAppSummary()" style="color:#25d366;border-color:rgba(37,211,102,.3);">&#128232; Share Today's Summary on WhatsApp</button>
-
-        <!-- Wallet Transfer -->
-        <div class="wallet-card">
-          <div class="wallet-title">&#8646; Move Money Between Wallets</div>
-          <div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Use when you withdraw M-Pesa to cash, send to bank, etc.</div>
-          <div class="wallet-from-to">
-            <select class="wallet-sel" id="wt-from">
-              <option value="Cash">Cash</option>
-              <option value="M-Pesa" selected>M-Pesa</option>
-              <option value="Bank">Bank</option>
-            </select>
-            <div class="wallet-arrow">&#10132;</div>
-            <select class="wallet-sel" id="wt-to">
-              <option value="Cash" selected>Cash</option>
-              <option value="M-Pesa">M-Pesa</option>
-              <option value="Bank">Bank</option>
-            </select>
-          </div>
-          <div class="g12"><label>Amount (KES)</label><input id="wt-amt" type="number" placeholder="e.g. 500"></div>
-          <div class="g12"><label>Note (optional)</label><input id="wt-note" placeholder="e.g. Withdrew for shopping"></div>
-          <button class="btn bp bsm" onclick="recordTransfer()">&#10003; Record Transfer</button>
-          <div id="wt-log" class="wallet-log" style="margin-top:12px;display:none;"></div>
-        </div>
-        <div class="card">
-          <div class="ct">&#8722; Record Expense</div>
-          <div class="g12"><label>Amount (KES)</label><input id="ded-amt" type="number" placeholder="500"></div>
-          <div class="g12"><label>Reason</label><input id="ded-rsn" placeholder="e.g. Paid myself, Rent..."></div>
-          <div class="fr">
-            <div><label>Category</label>
-              <select id="ded-cat">
-                <option>Personal draw</option><option>Restock</option><option>Rent</option>
-                <option>Transport</option><option>Marketing</option><option>Other expenses</option>
-              </select>
+        <!-- ══ OVERVIEW TAB ══ -->
+        <div id="fin-tab-overview">
+          <div class="daily-summary" id="fin-daily">
+            <div class="daily-summary-title">&#9728; Today's Summary</div>
+            <div class="daily-grid">
+              <div class="daily-cell"><div class="daily-val" id="fd-rev">KES 0</div><div class="daily-lbl">Revenue</div></div>
+              <div class="daily-cell"><div class="daily-val" id="fd-pro" style="color:var(--ok)">KES 0</div><div class="daily-lbl">Profit</div></div>
+              <div class="daily-cell"><div class="daily-val" id="fd-cnt" style="color:var(--t)">0</div><div class="daily-lbl">Sales</div></div>
             </div>
-            <div><label>Paid From</label>
-              <select id="ded-wallet">
+          </div>
+          <div class="fin-date-pills">
+            <button class="dpill active" id="fp-all" onclick="setFinFilter(this,'all')">All Time</button>
+            <button class="dpill" onclick="setFinFilter(this,'today')">Today</button>
+            <button class="dpill" onclick="setFinFilter(this,'week')">This Week</button>
+            <button class="dpill" onclick="setFinFilter(this,'month')">This Month</button>
+          </div>
+          <div class="money-breakdown">
+            <div class="money-breakdown-title">&#128181; Where your money is sitting</div>
+            <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#4caf50;"></div>Cash</div><div class="money-row-val" id="mb-cash" style="color:#4caf50;">KES 0</div></div>
+            <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#2196f3;"></div>M-Pesa</div><div class="money-row-val" id="mb-mpesa" style="color:#2196f3;">KES 0</div></div>
+            <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#9c27b0;"></div>Card</div><div class="money-row-val" id="mb-card" style="color:#9c27b0;">KES 0</div></div>
+            <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#f44336;"></div>Credit (Owed to you)</div><div class="money-row-val" id="mb-credit" style="color:#f44336;">KES 0</div></div>
+            <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#ff9800;"></div>Split</div><div class="money-row-val" id="mb-split" style="color:#ff9800;">KES 0</div></div>
+            <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#607d8b;"></div>Bank</div><div class="money-row-val" id="mb-bank" style="color:#607d8b;">KES 0</div></div>
+            <div class="money-total-row">
+              <span style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">Total Collected</span>
+              <span style="font-size:18px;font-weight:800;color:var(--gold);" id="mb-total">KES 0</span>
+            </div>
+          </div>
+          <div class="sg">
+            <div class="sc"><div class="sl">Revenue</div><div class="sv" id="f-rev" style="color:var(--gold)">KES 0</div></div>
+            <div class="sc"><div class="sl">Profit</div><div class="sv" id="f-pro" style="color:var(--ok)">KES 0</div></div>
+            <div class="sc"><div class="sl">Capital In</div><div class="sv" id="f-inj" style="color:var(--info)">KES 0</div></div>
+            <div class="sc"><div class="sl">Net Balance</div><div class="sv" id="f-bal">KES 0</div></div>
+          </div>
+          <div class="info-bar" style="font-size:12px;">Net Balance = Money Collected &minus; Expenses + Capital injected</div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn bsm" onclick="openCpModal()" style="flex:1;">&#128274; Change PIN</button>
+            <button class="btn bsm bd" onclick="lockFin()" style="flex:1;">Lock Finance</button>
+          </div>
+        </div>
+
+        <!-- ══ RECORD TAB ══ -->
+        <div id="fin-tab-transactions" style="display:none;">
+          <div class="card">
+            <div class="ct">&#8722; Record Expense</div>
+            <div class="g12"><label>Amount (KES)</label><input id="ded-amt" type="number" placeholder="500"></div>
+            <div class="g12"><label>Reason</label><input id="ded-rsn" placeholder="e.g. Paid myself, Rent..."></div>
+            <div class="fr">
+              <div><label>Category</label>
+                <select id="ded-cat">
+                  <option>Personal draw</option><option>Restock</option><option>Rent</option>
+                  <option>Transport</option><option>Marketing</option><option>Other expenses</option>
+                </select>
+              </div>
+              <div><label>Paid From</label>
+                <select id="ded-wallet">
+                  <option value="Cash">Cash</option>
+                  <option value="M-Pesa">M-Pesa</option>
+                  <option value="Bank">Bank</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn bp" id="ded-btn" onclick="addDeduction()">Record Expense</button>
+          </div>
+          <div class="card">
+            <div class="ct" style="color:var(--ok)">+ Inject Capital</div>
+            <div class="inject-bar">Use when adding your own money to the business.</div>
+            <div class="g12"><label>Amount (KES)</label><input id="inj-amt" type="number" placeholder="5000"></div>
+            <div class="g12"><label>Reason</label><input id="inj-rsn" placeholder="e.g. Restock funds..."></div>
+            <button class="btn bok-btn" id="inj-btn" onclick="addInjection()">Inject Capital</button>
+          </div>
+          <div class="wallet-card">
+            <div class="wallet-title">&#8646; Move Money Between Wallets</div>
+            <div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Use when you withdraw M-Pesa to cash, send to bank, etc.</div>
+            <div class="wallet-from-to">
+              <select class="wallet-sel" id="wt-from">
                 <option value="Cash">Cash</option>
+                <option value="M-Pesa" selected>M-Pesa</option>
+                <option value="Bank">Bank</option>
+              </select>
+              <div class="wallet-arrow">&#10132;</div>
+              <select class="wallet-sel" id="wt-to">
+                <option value="Cash" selected>Cash</option>
                 <option value="M-Pesa">M-Pesa</option>
                 <option value="Bank">Bank</option>
               </select>
             </div>
+            <div class="g12"><label>Amount (KES)</label><input id="wt-amt" type="number" placeholder="e.g. 500"></div>
+            <div class="g12"><label>Note (optional)</label><input id="wt-note" placeholder="e.g. Withdrew for shopping"></div>
+            <button class="btn bp bsm" onclick="recordTransfer()">&#10003; Record Transfer</button>
+            <div id="wt-log" class="wallet-log" style="margin-top:12px;display:none;"></div>
           </div>
-          <button class="btn bp" id="ded-btn" onclick="addDeduction()">Record Expense</button>
+          <div class="divider">Transaction Log</div>
+          <div class="card"><div id="fin-log"><div class="empty">No transactions yet</div></div></div>
         </div>
-        <div class="card">
-          <div class="ct" style="color:var(--ok)">+ Inject Capital</div>
-          <div class="inject-bar">Use when adding your own money to the business.</div>
-          <div class="g12"><label>Amount (KES)</label><input id="inj-amt" type="number" placeholder="5000"></div>
-          <div class="g12"><label>Reason</label><input id="inj-rsn" placeholder="e.g. Restock funds..."></div>
-          <button class="btn bok-btn" id="inj-btn" onclick="addInjection()">Inject Capital</button>
+
+        <!-- ══ REPORTS TAB ══ -->
+        <div id="fin-tab-reports" style="display:none;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <button onclick="showPL()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128202;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--t);">P&amp;L Report</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Monthly profit &amp; loss</div>
+            </button>
+            <button onclick="showLedger()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128214;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--t);">Full Ledger</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">All transactions by day</div>
+            </button>
+            <button onclick="exportCSV()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128229;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--t);">Export CSV</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">All sales as spreadsheet</div>
+            </button>
+            <button onclick="shareWhatsAppSummary()" style="background:var(--s2);border:1px solid rgba(37,211,102,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128232;</div>
+              <div style="font-size:13px;font-weight:700;color:#25d366;">WhatsApp</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Today's summary</div>
+            </button>
+          </div>
         </div>
-        <div class="divider">Transaction Log</div>
-        <div class="card"><div id="fin-log"><div class="empty">No transactions yet</div></div></div>
-        <div style="display:flex;gap:8px;margin-top:4px;">
-          <button class="btn bsm" onclick="openCpModal()" style="flex:1;">Change PIN</button>
-          <button class="btn bsm bd" onclick="lockFin()" style="flex:1;">Lock</button>
-        </div>
+
       </div>
     </div>
 
@@ -2096,10 +2111,25 @@ function setFinFilter(btn, f) {
   renderFin();
 }
 
+function showFinTab(name, btn) {
+  ['overview','transactions','reports'].forEach(function(t) {
+    document.getElementById('fin-tab-' + t).style.display = t === name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.fin-tab-btn').forEach(function(b) {
+    b.style.background = 'transparent';
+    b.style.color = 'var(--t2)';
+  });
+  btn.style.background = 'var(--gold)';
+  btn.style.color = '#0a0a0a';
+}
+
 function renderFin() {
   if (!finOpen) {
     document.getElementById('fin-pin').style.display = 'block';
-    document.getElementById('fin-content').style.display = 'none'; return;
+    document.getElementById('fin-content').style.display = 'none';
+    var hint = document.getElementById('fin-pin-hint');
+    if (hint) hint.textContent = (typeof appPin !== 'undefined' && appPin === '1234') ? 'Default PIN: 1234 — please change it' : 'Enter your PIN';
+    return;
   }
   document.getElementById('fin-pin').style.display = 'none';
   document.getElementById('fin-content').style.display = 'block';
