@@ -316,6 +316,7 @@ select option{background:#1c1c1c}
   </div>
   <div class="lock-err" id="lock-err"></div>
   <div class="lock-hint" id="lock-hint">Enter PIN to access</div>
+  <button onclick="emergencyResetPin()" style="background:none;border:none;color:var(--t3);font-size:11px;cursor:pointer;margin-top:20px;text-decoration:underline;padding:8px;">Forgot PIN?</button>
 </div>
 
 <!-- ══ CHANGE PIN MODAL ══ -->
@@ -1705,18 +1706,12 @@ function renderHistList(reset) {
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
     html += '<span class="chip">' + s.method + '</span>';
     html += '<span style="font-weight:700;font-size:13px;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' + (s.balance > 0 ? 'Owes ' + fmt(s.balance) : 'Paid in full') + '</span></div>';
-    html += '<div style="display:flex;gap:8px;">';
-    html += '<button class="btn bsm" onclick="toggleEditSale(' + s.id + ')" style="flex:1;">&#9998; Edit</button>';
-    html += '<button class="btn bsm" onclick="openEditItems(' + s.id + ')" style="flex:1;background:var(--gold-bg);color:var(--gold);border-color:transparent;">&#128722; Items</button>';
-    html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617; Return</button>';
-    html += '<button class="btn bsm bd" onclick="deleteSale(' + s.id + ')" style="flex:1;">&#128465;</button></div>';
-    html += '<div class="edit-sale-panel" id="esp-' + s.id + '">';
-    html += '<div class="g12"><label>Customer Name</label><input id="esn-' + s.id + '" value="' + s.customer_name + '"></div>';
-    html += '<div class="g12"><label>Date</label><input type="date" id="esd-' + s.id + '" value="' + s.date + '"></div>';
-    html += '<button class="btn bp bsm" onclick="saveEditSale(' + s.id + ')">Save Changes</button></div>';
-    html += '</div>';
-  });
-  if (histHasMore) {
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    html += '<button class="btn bsm" onclick="reshareReceipt(' + s.id + ')" style="flex:1;min-width:60px;background:var(--info-bg);color:var(--info);border-color:transparent;">&#128279; Receipt</button>';
+    html += '<button class="btn bsm" onclick="toggleEditSale(' + s.id + ')" style="flex:1;min-width:60px;">&#9998; Edit</button>';
+    html += '<button class="btn bsm" onclick="openEditItems(' + s.id + ')" style="flex:1;min-width:60px;background:var(--gold-bg);color:var(--gold);border-color:transparent;">&#128722; Items</button>';
+    html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;min-width:60px;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617; Return</button>';
+    html += '<button class="btn bsm bd" onclick="deleteSale(' + s.id + ')" style="flex:1;min-width:40px;">&#128465;</button></div>';
     html += '<button onclick="loadMoreHist()" class="btn" style="width:100%;margin-top:8px;background:var(--s2);color:var(--t2);border:1px dashed var(--b2);">Load more sales ↓</button>';
   }
   el.innerHTML = html;
@@ -1891,11 +1886,13 @@ function openCustDetail(name) {
     html += '<span style="font-size:12px;color:var(--t2);">' + s.date + '</span>';
     html += '<span style="font-weight:800;color:var(--gold);">' + fmt(s.total) + '</span></div>';
     html += '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">' + its + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
     html += '<span class="chip">' + s.method + '</span>';
     html += '<span style="font-size:12px;font-weight:700;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' +
       (s.balance > 0 ? 'Owes ' + fmt(s.balance) : '&#10003; Paid') + '</span>';
-    html += '</div></div>';
+    html += '</div>';
+    html += '<button class="btn bsm" onclick="reshareReceipt(' + s.id + ')" style="width:100%;background:var(--info-bg);color:var(--info);border-color:transparent;margin-top:2px;">&#128279; Share Receipt</button>';
+    html += '</div>';
   });
   document.getElementById('cd-history').innerHTML = html || '<div class="empty">No purchases</div>';
   document.getElementById('cust-detail-overlay').classList.add('on');
@@ -1937,7 +1934,9 @@ function cdRecordPayment() {
     allCustomerSales = [];
     loadCustomers();
     closeCustDetail();
-    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false);
+    var allItems = [];
+    _cdSales.forEach(function(s) { (s.items || []).forEach(function(i) { allItems.push(i); }); });
+    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, allItems);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
   .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
 }
@@ -1962,7 +1961,9 @@ function cdMarkFullyPaid() {
     return Promise.all(ps);
   }).then(function() {
     allCustomerSales = []; loadCustomers(); closeCustDetail();
-    showDebtReceipt(custName, balance, method, balance, 0, today, true);
+    var allItemsMFP = [];
+    _cdSales.forEach(function(s) { (s.items || []).forEach(function(i) { allItemsMFP.push(i); }); });
+    showDebtReceipt(custName, balance, method, balance, 0, today, true, allItemsMFP);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
@@ -1970,7 +1971,124 @@ function closeCustDetail() {
   document.getElementById('cust-detail-overlay').classList.remove('on');
 }
 
-function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear) {
+// ── Reshare any past receipt by sale ID ──
+function reshareReceipt(saleId) {
+  toast('Loading receipt...', 'ok');
+  dbGet('sales', '?id=eq.' + saleId).then(function(data) {
+    if (!data || !data.length) { toast('Sale not found', 'err'); return; }
+    var s = data[0];
+    lastReceiptRef = s.receipt_ref || genRef();
+    lastReceiptData = {
+      ref: lastReceiptRef,
+      cust: s.customer_name || 'Walk-in',
+      date: s.date,
+      items: s.items || [],
+      total: s.total,
+      paid: s.paid,
+      balance: s.balance,
+      method: s.method,
+      splitDetails: s.split_details || null,
+      discount: 0
+    };
+    var lines2 = ['=== LIZ LUXE ===', 'LUXURY · BEAUTY · STYLE', lastReceiptRef, ''];
+    lines2.push('Customer: ' + lastReceiptData.cust);
+    (s.items || []).forEach(function(i) { lines2.push(i.qty + 'x ' + i.name + ' — ' + fmt((i.selling_price || 0) * i.qty)); });
+    lines2.push('');
+    lines2.push('TOTAL: ' + fmt(s.total));
+    if (s.split_details) lines2.push('Split: ' + s.split_details);
+    else lines2.push('Paid (' + s.method + '): ' + fmt(s.paid));
+    if (s.balance > 0) lines2.push('Balance due: ' + fmt(s.balance));
+    lines2.push(''); lines2.push(s.date);
+    lines2.push('Thank you for shopping with Liz Luxe!');
+    lastReceiptText = lines2.join('\n');
+    shareReceipt();
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
+
+// ── Debt receipt with original items ──
+function showDebtReceiptFull(custName, amtPaid, method, prevBal, newBal, date, fullyClear, saleItems) {
+  var ref = genRef();
+  var W = 640, pad = 48, font = 'Georgia, serif';
+  var GOLD = '#C9972A', GOLD_DIM = '#8a6820', WHITE = '#f0ead6', GREY = '#6a6050';
+  var BG = '#0f0f0f', DIVIDER = 'rgba(201,151,42,0.3)', RED = '#e06060', GREEN = '#7bc950';
+  var lines = [];
+  lines.push({t:'logo'});
+  lines.push({t:'sub', v:'LUXURY  ·  BEAUTY  ·  STYLE'});
+  lines.push({t:'ref', v: ref});
+  lines.push({t:'pdiv'});
+  lines.push({t:'head', v: fullyClear ? '❆  DEBT CLEARED  ❆' : 'PAYMENT RECEIPT'});
+  lines.push({t:'pdiv'});
+  lines.push({t:'row', l:'Customer', r: custName});
+  lines.push({t:'row', l:'Date', r: date});
+  if (saleItems && saleItems.length) {
+    lines.push({t:'pdiv'});
+    lines.push({t:'row', l:'Items Purchased', r: '', muted:true});
+    saleItems.forEach(function(i) {
+      lines.push({t:'row', l:'  ' + i.qty + '× ' + i.name, r: fmt((i.selling_price||0)*i.qty), muted:true});
+    });
+  }
+  lines.push({t:'pdiv'});
+  lines.push({t:'row', l:'Previous Balance', r: fmt(prevBal), muted:true});
+  lines.push({t:'paid', l:'Amount Paid', r: fmt(amtPaid)});
+  lines.push({t:'row', l:'Method', r: method});
+  if (newBal > 0) { lines.push({t:'row', l:'Remaining Balance', r: fmt(newBal), red:true}); }
+  else { lines.push({t:'row', l:'Balance', r: 'CLEARED ✓', green:true}); }
+  lines.push({t:'pdiv'});
+  lines.push({t:'foot', v: fullyClear ? 'Thank you for settling your account' : 'Thank you for your payment'});
+  lines.push({t:'brand', v:'❆  Liz Luxe  ❆'});
+  lines.push({t:'date', v: date});
+  var lineH = 36, divH = 16, totalH = pad * 2;
+  lines.forEach(function(l) {
+    if (l.t==='pdiv') totalH += divH+14;
+    else if (l.t==='logo') totalH += 58;
+    else if (l.t==='sub'||l.t==='ref') totalH += 26;
+    else if (l.t==='head') totalH += 36;
+    else if (l.t==='foot') totalH += 30;
+    else if (l.t==='brand') totalH += 38;
+    else if (l.t==='date') totalH += 26;
+    else totalH += lineH;
+  });
+  totalH += 20;
+  var canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = totalH;
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = BG; ctx.fillRect(0,0,W,totalH);
+  ctx.strokeStyle = GOLD; ctx.lineWidth = 2; ctx.strokeRect(6,6,W-12,totalH-12);
+  ctx.strokeStyle = 'rgba(201,151,42,0.15)'; ctx.lineWidth = 1; ctx.strokeRect(12,12,W-24,totalH-24);
+  var sawSize = 10; ctx.fillStyle = '#050505';
+  for (var xi=0;xi<W;xi+=sawSize*2) {
+    ctx.beginPath();ctx.moveTo(xi,6);ctx.lineTo(xi+sawSize,6+sawSize);ctx.lineTo(xi+sawSize*2,6);ctx.fill();
+    ctx.beginPath();ctx.moveTo(xi,totalH-6);ctx.lineTo(xi+sawSize,totalH-6-sawSize);ctx.lineTo(xi+sawSize*2,totalH-6);ctx.fill();
+  }
+  var y = pad;
+  function dDiv(){ctx.save();ctx.strokeStyle=DIVIDER;ctx.setLineDash([5,5]);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,y+7);ctx.lineTo(W-pad,y+7);ctx.stroke();ctx.restore();y+=divH+14;}
+  lines.forEach(function(l){
+    if(l.t==='pdiv'){dDiv();return;}
+    if(l.t==='logo'){ctx.font='italic bold 36px '+font;ctx.fillStyle=GOLD;ctx.textAlign='center';ctx.fillText('Liz Luxe',W/2,y+36);y+=58;return;}
+    if(l.t==='sub'){ctx.font='12px '+font;ctx.fillStyle=GOLD_DIM;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+13);y+=26;return;}
+    if(l.t==='ref'){ctx.font='11px monospace';ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+11);y+=26;return;}
+    if(l.t==='head'){ctx.font='bold 16px '+font;ctx.fillStyle=fullyClear?GREEN:GOLD;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+20);y+=36;return;}
+    if(l.t==='paid'){ctx.font='bold 20px '+font;ctx.fillStyle=GREEN;ctx.textAlign='left';ctx.fillText(l.l,pad,y+22);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+22);y+=lineH+2;return;}
+    if(l.t==='row'){ctx.font='15px '+font;ctx.fillStyle=l.red?RED:l.green?GREEN:l.muted?GREY:WHITE;ctx.textAlign='left';ctx.fillText(l.l,pad,y+20);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+20);y+=lineH;return;}
+    if(l.t==='foot'){ctx.font='italic 13px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+15);y+=30;return;}
+    if(l.t==='brand'){ctx.font='bold 18px '+font;ctx.fillStyle=GOLD;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+22);y+=38;return;}
+    if(l.t==='date'){ctx.font='12px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+13);y+=26;return;}
+  });
+  lastReceiptRef = ref;
+  canvas.toBlob(function(blob){
+    var file = new File([blob],'LizLuxe-Payment-'+ref+'.png',{type:'image/png'});
+    var itemLines = (saleItems||[]).map(function(i){return '  '+i.qty+'x '+i.name+' - '+fmt((i.selling_price||0)*i.qty);}).join('\n');
+    var txt = '=== LIZ LUXE ===\n'+(fullyClear?'Debt Cleared':'Payment Receipt')+' '+ref+'\n\nCustomer: '+custName+(itemLines?'\n\nItems:\n'+itemLines:'')+'\n\nPrevious Balance: '+fmt(prevBal)+'\nAmount Paid: '+fmt(amtPaid)+' ('+method+')'+'\nRemaining: '+(newBal>0?fmt(newBal):'CLEARED ✓')+'\nDate: '+date+'\n\nThank you\n❆ Liz Luxe ❆';
+    lastReceiptText = txt;
+    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({title:'Liz Luxe Payment Receipt',files:[file]}).catch(function(){shareAsUrl(canvas);});}
+    else{shareAsUrl(canvas);}
+  },'image/png');
+}
+
+function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear, saleItems) {
+  return showDebtReceiptFull(custName, amtPaid, method, prevBal, newBal, date, fullyClear, saleItems || []);
+}
+function _showDebtReceiptOld(custName, amtPaid, method, prevBal, newBal, date, fullyClear) {
   var ref = genRef();
   var W = 640, pad = 48, font = 'Georgia, serif';
   var GOLD = '#C9972A', GOLD_DIM = '#8a6820', WHITE = '#f0ead6', GREY = '#6a6050';
@@ -3110,19 +3228,12 @@ function filterHist() {
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
     html += '<span class="chip">' + s.method + '</span>';
     html += '<span style="font-weight:700;font-size:13px;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' + (s.balance > 0 ? 'Owes ' + fmt(s.balance) : 'Paid in full') + '</span></div>';
-    html += '<div style="display:flex;gap:8px;">';
-    html += '<button class="btn bsm" onclick="toggleEditSale(' + s.id + ')" style="flex:1;">&#9998; Edit</button>';
-    html += '<button class="btn bsm" onclick="openEditItems(' + s.id + ')" style="flex:1;background:var(--gold-bg);color:var(--gold);border-color:transparent;">&#128722; Items</button>';
-    html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617; Return</button>';
-    html += '<button class="btn bsm bd" onclick="deleteSale(' + s.id + ')" style="flex:1;">&#128465;</button></div>';
-    html += '<div class="edit-sale-panel" id="esp-' + s.id + '">';
-    html += '<div class="g12"><label>Customer Name</label><input id="esn-' + s.id + '" value="' + s.customer_name + '"></div>';
-    html += '<div class="g12"><label>Date</label><input type="date" id="esd-' + s.id + '" value="' + s.date + '"></div>';
-    html += '<button class="btn bp bsm" onclick="saveEditSale(' + s.id + ')">Save Changes</button></div>';
-    html += '</div>';
-  });
-  el.innerHTML = html;
-}
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    html += '<button class="btn bsm" onclick="reshareReceipt(' + s.id + ')" style="flex:1;min-width:60px;background:var(--info-bg);color:var(--info);border-color:transparent;">&#128279; Receipt</button>';
+    html += '<button class="btn bsm" onclick="toggleEditSale(' + s.id + ')" style="flex:1;min-width:60px;">&#9998; Edit</button>';
+    html += '<button class="btn bsm" onclick="openEditItems(' + s.id + ')" style="flex:1;min-width:60px;background:var(--gold-bg);color:var(--gold);border-color:transparent;">&#128722; Items</button>';
+    html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;min-width:60px;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617; Return</button>';
+    html += '<button class="btn bsm bd" onclick="deleteSale(' + s.id + ')" style="flex:1;min-width:40px;">&#128465;</button></div>';
 
 function toggleEditSale(id) {
   var p = document.getElementById('esp-' + id);
@@ -3288,11 +3399,13 @@ function openCustDetail(name) {
     html += '<span style="font-size:12px;color:var(--t2);">' + s.date + '</span>';
     html += '<span style="font-weight:800;color:var(--gold);">' + fmt(s.total) + '</span></div>';
     html += '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">' + its + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
     html += '<span class="chip">' + s.method + '</span>';
     html += '<span style="font-size:12px;font-weight:700;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' +
       (s.balance > 0 ? 'Owes ' + fmt(s.balance) : '&#10003; Paid') + '</span>';
-    html += '</div></div>';
+    html += '</div>';
+    html += '<button class="btn bsm" onclick="reshareReceipt(' + s.id + ')" style="width:100%;background:var(--info-bg);color:var(--info);border-color:transparent;margin-top:2px;">&#128279; Share Receipt</button>';
+    html += '</div>';
   });
   document.getElementById('cd-history').innerHTML = html || '<div class="empty">No purchases</div>';
   document.getElementById('cust-detail-overlay').classList.add('on');
@@ -3334,7 +3447,9 @@ function cdRecordPayment() {
     allCustomerSales = [];
     loadCustomers();
     closeCustDetail();
-    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false);
+    var allItems = [];
+    _cdSales.forEach(function(s) { (s.items || []).forEach(function(i) { allItems.push(i); }); });
+    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, allItems);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
   .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
 }
@@ -3359,7 +3474,9 @@ function cdMarkFullyPaid() {
     return Promise.all(ps);
   }).then(function() {
     allCustomerSales = []; loadCustomers(); closeCustDetail();
-    showDebtReceipt(custName, balance, method, balance, 0, today, true);
+    var allItemsMFP = [];
+    _cdSales.forEach(function(s) { (s.items || []).forEach(function(i) { allItemsMFP.push(i); }); });
+    showDebtReceipt(custName, balance, method, balance, 0, today, true, allItemsMFP);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
@@ -3367,7 +3484,10 @@ function closeCustDetail() {
   document.getElementById('cust-detail-overlay').classList.remove('on');
 }
 
-function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear) {
+function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear, saleItems) {
+  return showDebtReceiptFull(custName, amtPaid, method, prevBal, newBal, date, fullyClear, saleItems || []);
+}
+function _showDebtReceiptOld(custName, amtPaid, method, prevBal, newBal, date, fullyClear) {
   var ref = genRef();
   var W = 640, pad = 48, font = 'Georgia, serif';
   var GOLD = '#C9972A', GOLD_DIM = '#8a6820', WHITE = '#f0ead6', GREY = '#6a6050';
@@ -4006,6 +4126,41 @@ function unlockApp() {
       }, 800);
     }).catch(function() {});
   }
+}
+
+// ── Emergency PIN Reset ──
+function emergencyResetPin() {
+  var email = prompt('Enter the email you use to log in.\nYour PIN will be reset to 1234.');
+  if (!email || !email.trim()) return;
+  email = email.trim().toLowerCase();
+  // Send OTP to their email
+  fetch(SB_AUTH + '/otp', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY},
+    body: JSON.stringify({email: email, create_user: false})
+  }).then(function(r) {
+    if (r.ok || r.status === 200 || r.status === 204) {
+      var code = prompt('A 6-digit code was sent to ' + email + '.\nEnter it here to confirm and reset PIN to 1234:');
+      if (!code || !code.trim()) return;
+      fetch(SB_AUTH + '/verify', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY},
+        body: JSON.stringify({email: email, token: code.trim(), type: 'email'})
+      }).then(function(r2) { return r2.json(); }).then(function(d) {
+        if (d.access_token) {
+          appPin = '1234';
+          localStorage.setItem('llpin', '1234');
+          document.getElementById('lock-hint').textContent = 'PIN reset to 1234 — enter it now';
+          document.getElementById('lock-err').textContent = '';
+          toast('PIN reset to 1234', 'ok');
+        } else {
+          document.getElementById('lock-err').textContent = 'Invalid code. Try again.';
+        }
+      }).catch(function() { document.getElementById('lock-err').textContent = 'Verification failed. Check your connection.'; });
+    } else {
+      document.getElementById('lock-err').textContent = 'Email not found or error sending code.';
+    }
+  }).catch(function() { document.getElementById('lock-err').textContent = 'Connection error. Check your internet.'; });
 }
 
 function lockPress(k) {
