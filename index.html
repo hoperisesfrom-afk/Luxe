@@ -1627,7 +1627,7 @@ function showReceipt(cust, date, items, total, paid, balance, m, splitDetails) {
     ref: lastReceiptRef, cust: cust, date: date,
     items: items, total: total, paid: paid,
     balance: balance, method: m, splitDetails: splitDetails || null,
-    discount: discountAmt || 0
+    discount: discountAmt || 0, payLog: []
   };
   document.getElementById('r-overlay').classList.add('on');
 }
@@ -2612,7 +2612,8 @@ function reshareReceipt(id) {
     ref: lastReceiptRef, cust: sale.customer_name, date: sale.date,
     items: items, total: sale.total, paid: sale.paid,
     balance: sale.balance, method: sale.method,
-    splitDetails: sale.split_details || null, discount: 0
+    splitDetails: sale.split_details || null, discount: 0,
+    payLog: sale.payment_log || []
   };
   var lines2 = ['=== LIZ LUXE ===','LUXURY · BEAUTY · STYLE', lastReceiptRef,''];
   lines2.push('Customer: ' + sale.customer_name);
@@ -3030,54 +3031,6 @@ function completeSale() {
     .finally(function() { loading('sale-btn', false, 'Complete Sale'); });
 }
 
-function showReceipt(cust, date, items, total, paid, balance, m, splitDetails) {
-  // lastReceiptRef already set in completeSale
-  document.getElementById('r-ref').textContent = 'Receipt ' + lastReceiptRef;
-  var det = '<div class="r-row"><span>Customer:</span><span>' + cust + '</span></div>';
-  items.forEach(function(i) { det += '<div class="r-row"><span>' + i.qty + 'x ' + i.name + '</span><span>' + fmt(i.selling_price * i.qty) + '</span></div>'; });
-  document.getElementById('r-details').innerHTML = det;
-  var tot = '<div class="r-row tot"><span>TOTAL</span><span>' + fmt(total) + '</span></div>';
-  if (splitDetails) {
-    tot += '<div class="r-row"><span>Split Payment</span><span style="font-size:11px;text-align:right;">' + splitDetails + '</span></div>';
-  } else {
-    tot += '<div class="r-row"><span>Paid (' + m + ')</span><span>' + fmt(paid) + '</span></div>';
-  }
-  tot += balance > 0
-    ? '<div class="r-row" style="color:#c0392b;font-weight:700;"><span>Balance due</span><span>' + fmt(balance) + '</span></div>'
-    : '<div class="r-row" style="color:#27ae60;"><span>Change</span><span>' + fmt(paid - total) + '</span></div>';
-  document.getElementById('r-totals').innerHTML = tot;
-  document.getElementById('r-date').textContent = date;
-  // Build receipt text for sharing
-  var lines = ['=== LIZ LUXE ===', 'LUXURY · BEAUTY · STYLE', lastReceiptRef, ''];
-  lines.push('Customer: ' + cust);
-  items.forEach(function(i) { lines.push(i.qty + 'x ' + i.name + ' — ' + fmt(i.selling_price * i.qty)); });
-  lines.push('');
-  lines.push('TOTAL: ' + fmt(total));
-  if (splitDetails) lines.push('Split: ' + splitDetails);
-  else lines.push('Paid (' + m + '): ' + fmt(paid));
-  if (balance > 0) lines.push('Balance due: ' + fmt(balance));
-  lines.push(''); lines.push(date);
-  lines.push('Thank you for shopping with Liz Luxe!');
-  lastReceiptText = lines.join('\n');
-  // Store structured data for image generation
-  lastReceiptData = {
-    ref: lastReceiptRef, cust: cust, date: date,
-    items: items, total: total, paid: paid,
-    balance: balance, method: m, splitDetails: splitDetails || null,
-    discount: discountAmt || 0
-  };
-  document.getElementById('r-overlay').classList.add('on');
-}
-function closeReceipt() { document.getElementById('r-overlay').classList.remove('on'); }
-
-function loadHist() {
-  document.getElementById('hist-list').innerHTML = '<div class="empty">Loading...</div>';
-  dbGet('sales', '?order=created_at.desc').then(function(data) {
-    allSales = data;
-    document.getElementById('debt-dot').classList.toggle('on', data.some(function(s) { return s.balance > 0; }));
-    filterHist();
-  }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
-}
 
 function filterHist() {
   var q = (document.getElementById('hist-search').value || '').toLowerCase();
