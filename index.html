@@ -2608,22 +2608,31 @@ function reshareReceipt(id) {
     return {qty: i.qty, name: i.name, selling_price: i.selling_price || i.sp || 0, buying_price: i.buying_price || i.bp || 0};
   });
   lastReceiptRef = sale.receipt_ref || genRef();
+  // Build payLog — combine payment_log entries
+  var payLog = (sale.payment_log || []).slice().sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
   lastReceiptData = {
     ref: lastReceiptRef, cust: sale.customer_name, date: sale.date,
     items: items, total: sale.total, paid: sale.paid,
     balance: sale.balance, method: sale.method,
     splitDetails: sale.split_details || null, discount: 0,
-    payLog: sale.payment_log || []
+    payLog: payLog
   };
-  var lines2 = ['=== LIZ LUXE ===','LUXURY · BEAUTY · STYLE', lastReceiptRef,''];
-  lines2.push('Customer: ' + sale.customer_name);
-  items.forEach(function(i){lines2.push(i.qty+'x '+i.name+' — '+fmt(i.selling_price*i.qty));});
-  lines2.push(''); lines2.push('TOTAL: '+fmt(sale.total));
-  lines2.push('Paid: '+fmt(sale.paid));
-  if(sale.balance>0) lines2.push('Balance due: '+fmt(sale.balance));
-  lines2.push(''); lines2.push(sale.date); lines2.push('Thank you for shopping with Liz Luxe!');
-  lastReceiptText = lines2.join('\n');
-  showReceipt(sale.customer_name, sale.date, items, sale.total, sale.paid, sale.balance, sale.method, sale.split_details);
+  lastReceiptText = '=== LIZ LUXE ===\n' + lastReceiptRef + '\nCustomer: ' + sale.customer_name + '\n' + sale.date;
+  // Build receipt DOM without overwriting lastReceiptData
+  var det = '<div class="r-row"><span>Customer:</span><span>' + sale.customer_name + '</span></div>';
+  items.forEach(function(i){ det += '<div class="r-row"><span>' + i.qty + 'x ' + i.name + '</span><span>' + fmt(i.selling_price * i.qty) + '</span></div>'; });
+  document.getElementById('r-details').innerHTML = det;
+  var tot = '<div class="r-row tot"><span>TOTAL</span><span>' + fmt(sale.total) + '</span></div>';
+  tot += '<div class="r-row"><span>Paid (' + sale.method + ')</span><span>' + fmt(sale.paid) + '</span></div>';
+  if (sale.balance > 0) {
+    tot += '<div class="r-row" style="color:#c0392b;font-weight:700;"><span>Balance due</span><span>' + fmt(sale.balance) + '</span></div>';
+  } else {
+    tot += '<div class="r-row" style="color:#27ae60;"><span>Balance</span><span>CLEARED ✓</span></div>';
+  }
+  document.getElementById('r-totals').innerHTML = tot;
+  document.getElementById('r-date').textContent = sale.date;
+  document.getElementById('r-ref').textContent = 'Receipt ' + lastReceiptRef;
+  document.getElementById('r-overlay').classList.add('on');
 }
 
 
