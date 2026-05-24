@@ -1987,17 +1987,17 @@ function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fully
   dlines.push({t:'head',v:fullyClear?'✦  DEBT CLEARED  ✦':'PAYMENT RECEIPT'});
   dlines.push({t:'pdiv'});
   dlines.push({t:'row',l:'Customer',r:custName});
-  // Items table: Item | Qty | Price | Total
-  if(custSales.length>0) {
+  // Items table
+  if(custSales.length>0){
     dlines.push({t:'pdiv'});
     dlines.push({t:'thead'});
     var allIt=[];
     custSales.forEach(function(s){(s.items||[]).forEach(function(i){allIt.push({qty:i.qty,name:i.name,sp:i.selling_price||0});});});
-    allIt.forEach(function(i){ dlines.push({t:'trow',name:i.name,qty:i.qty,price:i.sp,total:i.sp*i.qty}); });
+    allIt.forEach(function(i){dlines.push({t:'trow',name:i.name,qty:i.qty,price:i.sp,total:i.sp*i.qty});});
     var origTot=allIt.reduce(function(s,i){return s+i.sp*i.qty;},0);
     dlines.push({t:'ttotal',r:origTot});
   }
-  // Payment rows: Paid (Method)  KES xxx  date
+  // Payment timeline
   var allPayLogs=[];
   custSales.forEach(function(s){(s.payment_log||[]).forEach(function(p){allPayLogs.push(p);});});
   allPayLogs.push({amount:amtPaid,method:method,date:date});
@@ -2006,7 +2006,7 @@ function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fully
   allPayLogs=allPayLogs.filter(function(p){var k=p.date+'|'+p.amount+'|'+p.method;if(seen[k])return false;seen[k]=true;return true;});
   if(allPayLogs.length>0){
     dlines.push({t:'pdiv'});
-    allPayLogs.forEach(function(p){ dlines.push({t:'prow',method:p.method,amount:p.amount,date:p.date}); });
+    allPayLogs.forEach(function(p){dlines.push({t:'prow',method:p.method,amount:p.amount,date:p.date});});
   }
   dlines.push({t:'pdiv'});
   if(newBal>0){dlines.push({t:'row',l:'Balance',r:fmt(newBal),red:true});}
@@ -2054,10 +2054,10 @@ function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fully
     if(l.t==='total'){ctx.font='bold 17px '+font;ctx.fillStyle=GOLD;ctx.textAlign='left';ctx.fillText(l.l,pad,y+22);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+22);y+=lineH+2;return;}
     if(l.t==='paid'){ctx.font='bold 20px '+font;ctx.fillStyle=GREEN;ctx.textAlign='left';ctx.fillText(l.l,pad,y+22);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+22);y+=lineH+2;return;}
     if(l.t==='row'){ctx.font='15px '+font;ctx.fillStyle=l.red?RED:l.green?GREEN:l.muted?GREY:WHITE;ctx.textAlign='left';ctx.fillText(l.l,pad,y+20);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+20);y+=lineH;return;}
-    if(l.t==='thead'){var C=[pad,W*0.55,W*0.68,W-pad];ctx.font='bold 12px '+font;ctx.fillStyle=GOLD_DIM;ctx.textAlign='left';ctx.fillText('Item',C[0],y+18);ctx.textAlign='center';ctx.fillText('Qty',C[1],y+18);ctx.textAlign='center';ctx.fillText('Price',C[2],y+18);ctx.textAlign='right';ctx.fillText('Total',C[3],y+18);y+=30;return;}
-    if(l.t==='trow'){var C=[pad,W*0.55,W*0.68,W-pad];ctx.font='14px '+font;ctx.fillStyle=WHITE;var nm=l.name;ctx.textAlign='left';var maxW=W*0.52-pad;while(ctx.measureText(nm).width>maxW&&nm.length>4)nm=nm.slice(0,-1);if(nm!==l.name)nm=nm.slice(0,-1)+'...';ctx.fillText(nm,C[0],y+20);ctx.textAlign='center';ctx.fillText(String(l.qty),C[1],y+20);ctx.fillStyle=GREY;ctx.fillText(fmt(l.price),C[2],y+20);ctx.fillStyle=WHITE;ctx.textAlign='right';ctx.fillText(fmt(l.total),C[3],y+20);y+=lineH;return;}
-    if(l.t==='ttotal'){ctx.save();ctx.strokeStyle=DIVIDER;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,y+2);ctx.lineTo(W-pad,y+2);ctx.stroke();ctx.restore();ctx.font='bold 15px '+font;ctx.fillStyle=GOLD;ctx.textAlign='left';ctx.fillText('TOTAL',W*0.65,y+24);ctx.textAlign='right';ctx.fillText(fmt(l.r),W-pad,y+24);y+=lineH+6;return;}
-    if(l.t==='prow'){ctx.font='14px '+font;ctx.fillStyle=GREEN;ctx.textAlign='left';ctx.fillText('Paid ('+l.method+')',pad,y+20);var ds=l.date?' · '+l.date:'';var amtW=ctx.measureText(fmt(l.amount)).width;var dateW=l.date?ctx.measureText(ds).width+8:0;ctx.textAlign='right';ctx.fillText(fmt(l.amount),W-pad-dateW,y+20);ctx.fillStyle=GREY;ctx.fillText(ds,W-pad,y+20);y+=lineH;return;}
+    if(l.t==='thead'){var C=[pad,W*0.55,W*0.69,W-pad];ctx.font='bold 12px '+font;ctx.fillStyle=GOLD_DIM;ctx.textAlign='left';ctx.fillText('Item',C[0],y+18);ctx.textAlign='center';ctx.fillText('Qty',C[1],y+18);ctx.textAlign='center';ctx.fillText('Price',C[2],y+18);ctx.textAlign='right';ctx.fillText('Total',C[3],y+18);y+=30;return;}
+    if(l.t==='trow'){var C=[pad,W*0.55,W*0.69,W-pad];ctx.font='14px '+font;var nm=l.name;var maxW=W*0.5-pad;ctx.textAlign='left';while(ctx.measureText(nm).width>maxW&&nm.length>4)nm=nm.slice(0,-1);if(nm!==l.name)nm=nm.slice(0,-2)+'..';ctx.fillStyle=WHITE;ctx.fillText(nm,C[0],y+20);ctx.textAlign='center';ctx.fillText(String(l.qty),C[1],y+20);ctx.fillStyle=GREY;ctx.fillText(fmt(l.price),C[2],y+20);ctx.fillStyle=WHITE;ctx.textAlign='right';ctx.fillText(fmt(l.total),C[3],y+20);y+=lineH;return;}
+    if(l.t==='ttotal'){ctx.save();ctx.strokeStyle=DIVIDER;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,y+2);ctx.lineTo(W-pad,y+2);ctx.stroke();ctx.restore();ctx.font='bold 15px '+font;ctx.fillStyle=GOLD;ctx.textAlign='left';ctx.fillText('TOTAL',W*0.66,y+24);ctx.textAlign='right';ctx.fillText(fmt(l.r),W-pad,y+24);y+=lineH+6;return;}
+    if(l.t==='prow'){ctx.font='14px '+font;ctx.fillStyle=GREEN;ctx.textAlign='left';ctx.fillText('Paid ('+l.method+')',pad,y+20);var ds=l.date?' · '+l.date:'';var amtStr=fmt(l.amount);var dsW=l.date?ctx.measureText(ds).width+8:0;ctx.textAlign='right';ctx.fillStyle=GREEN;ctx.fillText(amtStr,W-pad-dsW,y+20);ctx.fillStyle=GREY;ctx.fillText(ds,W-pad,y+20);y+=lineH;return;}
     if(l.t==='foot'){ctx.font='italic 13px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+15);y+=30;return;}
     if(l.t==='brand'){ctx.font='bold 18px '+font;ctx.fillStyle=GOLD;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+22);y+=38;return;}
     if(l.t==='date'){ctx.font='12px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+13);y+=26;return;}
