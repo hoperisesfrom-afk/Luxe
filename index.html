@@ -1976,234 +1976,103 @@ function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fully
     return (s.customer_name||'').replace(' [RETURNED]','') === custName;
   });
   var ref = genRef();
-  var W=640, pad=48, font='Georgia, serif';
-  var GOLD='#C9972A', GOLD_DIM='#8a6820', WHITE='#f0ead6', GREY='#6a6050';
-  var BG='#0f0f0f', DIVIDER='rgba(201,151,42,0.3)', RED='#e06060', GREEN='#7bc950';
+  var W=640,pad=48,font='Georgia, serif';
+  var GOLD='#C9972A',GOLD_DIM='#8a6820',WHITE='#f0ead6',GREY='#6a6050';
+  var BG='#0f0f0f',DIVIDER='rgba(201,151,42,0.3)',RED='#e06060',GREEN='#7bc950';
   var dlines=[];
-
-  // ── Header ──
   dlines.push({t:'logo'});
-  dlines.push({t:'sub', v:'LUXURY  ·  BEAUTY  ·  STYLE'});
-  dlines.push({t:'ref', v:ref});
+  dlines.push({t:'sub',v:'LUXURY  ·  BEAUTY  ·  STYLE'});
+  dlines.push({t:'ref',v:ref});
   dlines.push({t:'pdiv'});
-  dlines.push({t:'head', v: fullyClear ? '✦  DEBT CLEARED  ✦' : 'PAYMENT RECEIPT'});
+  dlines.push({t:'head',v:fullyClear?'✦  DEBT CLEARED  ✦':'PAYMENT RECEIPT'});
   dlines.push({t:'pdiv'});
-  dlines.push({t:'row', l:'Customer', r:custName});
-
-  // ── Items table ──
-  if (custSales.length > 0) {
-    var allIt = [];
-    custSales.forEach(function(s) {
-      (s.items||[]).forEach(function(i) {
-        allIt.push({qty: i.qty, name: i.name, sp: i.selling_price || 0});
-      });
-    });
-    if (allIt.length > 0) {
-      dlines.push({t:'pdiv'});
-      // Column header row
-      dlines.push({t:'thead'});
-      // Each item row: name | qty | unit price | line total
-      allIt.forEach(function(i) {
-        dlines.push({t:'irow', name: i.name, qty: i.qty, sp: i.sp, tot: i.sp * i.qty});
-      });
-      // Separator line then total
-      dlines.push({t:'isep'});
-      var origTot = custSales.reduce(function(s,x){return s+(x.total||0);},0);
-      dlines.push({t:'total', l:'TOTAL', r:fmt(origTot)});
-    }
+  dlines.push({t:'row',l:'Customer',r:custName});
+  dlines.push({t:'row',l:'Payment Date',r:date});
+  dlines.push({t:'row',l:'Method',r:method});
+  // Original items
+  if(custSales.length>0) {
+    dlines.push({t:'pdiv'});
+    dlines.push({t:'shead',v:'ORIGINAL PURCHASE'});
+    var allIt=[];
+    custSales.forEach(function(s){(s.items||[]).forEach(function(i){allIt.push({qty:i.qty,name:i.name,sp:i.selling_price||0});});});
+    allIt.forEach(function(i){dlines.push({t:'row',l:i.qty+'x '+i.name,r:fmt(i.sp*i.qty)});});
+    var origTot=custSales.reduce(function(s,x){return s+(x.total||0);},0);
+    dlines.push({t:'total',l:'ORDER TOTAL',r:fmt(origTot)});
   }
-
-  // ── Payment log ──
+  dlines.push({t:'pdiv'});
+  dlines.push({t:'shead',v:'PAYMENT SUMMARY'});
+  dlines.push({t:'row',l:'Previous Balance',r:fmt(prevBal),muted:true});
+  dlines.push({t:'paid',l:'Amount Paid',r:fmt(amtPaid)});
+  if(newBal>0){dlines.push({t:'row',l:'Remaining Balance',r:fmt(newBal),red:true});}
+  else{dlines.push({t:'row',l:'Balance',r:'CLEARED ✓',green:true});}
+  // Payment history log from all customer sales
   var allPayLogs = [];
-  custSales.forEach(function(s) {
-    (s.payment_log||[]).forEach(function(p) { allPayLogs.push(p); });
+  custSales.forEach(function(s){
+    (s.payment_log||[]).forEach(function(p){ allPayLogs.push(p); });
   });
-  allPayLogs.sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
-
-  dlines.push({t:'pdiv'});
-  if (allPayLogs.length > 0) {
-    // Show each payment with date
-    allPayLogs.forEach(function(p) {
-      var dStr = p.date ? new Date(p.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short',year:'numeric'}) : p.date;
-      dlines.push({t:'payrow', method: p.method, amount: p.amount, date: dStr});
+  if(allPayLogs.length > 0) {
+    dlines.push({t:'pdiv'});
+    dlines.push({t:'shead',v:'PAYMENT HISTORY'});
+    allPayLogs.sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
+    allPayLogs.forEach(function(p){
+      var d = p.date ? new Date(p.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short',year:'numeric'}) : p.date;
+      dlines.push({t:'row',l:d+' · '+p.method,r:fmt(p.amount),green:true});
     });
-  } else {
-    // Single payment (no log yet)
-    dlines.push({t:'payrow', method: method, amount: amtPaid, date: date});
   }
   dlines.push({t:'pdiv'});
+  dlines.push({t:'foot',v:fullyClear?'Thank you for settling your account':'Thank you for your payment'});
+  dlines.push({t:'brand',v:'✦  Liz Luxe  ✦'});
+  dlines.push({t:'date',v:date});
 
-  // ── Balance status ──
-  if (newBal > 0) {
-    dlines.push({t:'balrow', l:'Balance', r:fmt(newBal), red:true});
-  } else {
-    dlines.push({t:'balrow', l:'Balance', r:'CLEARED ✓', green:true});
-  }
-  dlines.push({t:'pdiv'});
-  dlines.push({t:'foot', v: fullyClear ? 'Thank you for settling your account' : 'Thank you for your payment'});
-  dlines.push({t:'brand', v:'✦  Liz Luxe  ✦'});
-  dlines.push({t:'date', v:date});
-
-  // ── Measure canvas height ──
-  var lineH=36, divH=16, itemH=34, totalH=pad*2;
-  dlines.forEach(function(l) {
-    if (l.t==='pdiv')   totalH += divH+14;
-    else if (l.t==='logo')  totalH += 58;
-    else if (l.t==='sub'||l.t==='ref') totalH += 26;
-    else if (l.t==='head')  totalH += 36;
-    else if (l.t==='thead') totalH += 30;
-    else if (l.t==='irow')  totalH += itemH;
-    else if (l.t==='isep')  totalH += 12;
-    else if (l.t==='total') totalH += lineH+4;
-    else if (l.t==='payrow')totalH += lineH;
-    else if (l.t==='balrow')totalH += lineH+4;
-    else if (l.t==='foot')  totalH += 30;
-    else if (l.t==='brand') totalH += 38;
-    else if (l.t==='date')  totalH += 26;
-    else totalH += lineH;
+  var lineH=36,divH=16,totalH=pad*2;
+  dlines.forEach(function(l){
+    if(l.t==='pdiv')totalH+=divH+14;
+    else if(l.t==='logo')totalH+=58;
+    else if(l.t==='sub'||l.t==='ref')totalH+=26;
+    else if(l.t==='head'||l.t==='shead')totalH+=36;
+    else if(l.t==='foot')totalH+=30;
+    else if(l.t==='brand')totalH+=38;
+    else if(l.t==='date')totalH+=26;
+    else totalH+=lineH;
   });
-  totalH += 20;
+  totalH+=20;
 
-  // ── Draw canvas ──
-  var canvas = document.createElement('canvas');
-  canvas.width = W; canvas.height = totalH;
-  var ctx = canvas.getContext('2d');
-
-  // Background + border
-  ctx.fillStyle = BG; ctx.fillRect(0,0,W,totalH);
-  ctx.strokeStyle = GOLD; ctx.lineWidth = 2; ctx.strokeRect(6,6,W-12,totalH-12);
-  ctx.strokeStyle = 'rgba(201,151,42,0.15)'; ctx.lineWidth = 1; ctx.strokeRect(12,12,W-24,totalH-24);
-  var sawSize=10; ctx.fillStyle='#050505';
-  for (var xi=0; xi<W; xi+=sawSize*2) {
-    ctx.beginPath(); ctx.moveTo(xi,6); ctx.lineTo(xi+sawSize,6+sawSize); ctx.lineTo(xi+sawSize*2,6); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(xi,totalH-6); ctx.lineTo(xi+sawSize,totalH-6-sawSize); ctx.lineTo(xi+sawSize*2,totalH-6); ctx.fill();
+  var canvas=document.createElement('canvas');
+  canvas.width=W;canvas.height=totalH;
+  var ctx=canvas.getContext('2d');
+  ctx.fillStyle=BG;ctx.fillRect(0,0,W,totalH);
+  ctx.strokeStyle=GOLD;ctx.lineWidth=2;ctx.strokeRect(6,6,W-12,totalH-12);
+  ctx.strokeStyle='rgba(201,151,42,0.15)';ctx.lineWidth=1;ctx.strokeRect(12,12,W-24,totalH-24);
+  var sawSize=10;ctx.fillStyle='#050505';
+  for(var xi=0;xi<W;xi+=sawSize*2){
+    ctx.beginPath();ctx.moveTo(xi,6);ctx.lineTo(xi+sawSize,6+sawSize);ctx.lineTo(xi+sawSize*2,6);ctx.fill();
+    ctx.beginPath();ctx.moveTo(xi,totalH-6);ctx.lineTo(xi+sawSize,totalH-6-sawSize);ctx.lineTo(xi+sawSize*2,totalH-6);ctx.fill();
   }
-
-  var y = pad;
-  function dDiv() {
-    ctx.save(); ctx.strokeStyle=DIVIDER; ctx.setLineDash([5,5]); ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(pad,y+7); ctx.lineTo(W-pad,y+7); ctx.stroke();
-    ctx.restore(); y += divH+14;
-  }
-
-  // Column x positions for item table
-  var col1=pad, col2=W*0.52, col3=W*0.68, col4=W-pad;
-
-  dlines.forEach(function(l) {
-    if (l.t==='pdiv') { dDiv(); return; }
-
-    if (l.t==='logo') {
-      ctx.font='italic bold 36px '+font; ctx.fillStyle=GOLD; ctx.textAlign='center';
-      ctx.fillText('Liz Luxe', W/2, y+36); y+=58; return;
-    }
-    if (l.t==='sub') {
-      ctx.font='12px '+font; ctx.fillStyle=GOLD_DIM; ctx.textAlign='center';
-      ctx.fillText(l.v, W/2, y+13); y+=26; return;
-    }
-    if (l.t==='ref') {
-      ctx.font='11px monospace'; ctx.fillStyle=GREY; ctx.textAlign='center';
-      ctx.fillText(l.v, W/2, y+11); y+=26; return;
-    }
-    if (l.t==='head') {
-      ctx.font='bold 16px '+font; ctx.fillStyle=fullyClear?GREEN:GOLD; ctx.textAlign='center';
-      ctx.fillText(l.v, W/2, y+20); y+=36; return;
-    }
-    if (l.t==='row') {
-      ctx.font='15px '+font; ctx.fillStyle=WHITE;
-      ctx.textAlign='left';  ctx.fillText(l.l, pad, y+20);
-      ctx.textAlign='right'; ctx.fillText(l.r, W-pad, y+20);
-      y+=lineH; return;
-    }
-    if (l.t==='thead') {
-      // Column headers: Item | Qty | Price | Total
-      ctx.font='bold 11px '+font; ctx.fillStyle=GOLD_DIM;
-      ctx.textAlign='left';  ctx.fillText('ITEM', col1, y+18);
-      ctx.textAlign='center';ctx.fillText('QTY', col2, y+18);
-      ctx.textAlign='right'; ctx.fillText('PRICE', col3+20, y+18);
-      ctx.textAlign='right'; ctx.fillText('TOTAL', col4, y+18);
-      // underline
-      ctx.save(); ctx.strokeStyle=DIVIDER; ctx.setLineDash([]); ctx.lineWidth=0.5;
-      ctx.beginPath(); ctx.moveTo(pad,y+24); ctx.lineTo(W-pad,y+24); ctx.stroke();
-      ctx.restore();
-      y += 30; return;
-    }
-    if (l.t==='irow') {
-      ctx.font='14px '+font; ctx.fillStyle=WHITE;
-      // Item name (truncate if long)
-      var maxW = col2 - col1 - 8;
-      ctx.textAlign='left';
-      var nm = l.name;
-      while (nm.length > 3 && ctx.measureText(nm).width > maxW) nm = nm.slice(0,-1);
-      if (nm !== l.name) nm = nm.slice(0,-1) + '…';
-      ctx.fillText(nm, col1, y+22);
-      // Qty
-      ctx.textAlign='center'; ctx.fillText(String(l.qty), col2, y+22);
-      // Unit price
-      ctx.textAlign='right'; ctx.fillStyle=GREY; ctx.fillText(fmt(l.sp), col3+20, y+22);
-      // Line total
-      ctx.textAlign='right'; ctx.fillStyle=WHITE; ctx.fillText(fmt(l.tot), col4, y+22);
-      y += itemH; return;
-    }
-    if (l.t==='isep') {
-      ctx.save(); ctx.strokeStyle=DIVIDER; ctx.setLineDash([]); ctx.lineWidth=0.5;
-      ctx.beginPath(); ctx.moveTo(pad,y+4); ctx.lineTo(W-pad,y+4); ctx.stroke();
-      ctx.restore(); y+=12; return;
-    }
-    if (l.t==='total') {
-      ctx.font='bold 17px '+font; ctx.fillStyle=GOLD;
-      ctx.textAlign='left';  ctx.fillText(l.l, pad, y+22);
-      ctx.textAlign='right'; ctx.fillText(l.r, W-pad, y+22);
-      y+=lineH+4; return;
-    }
-    if (l.t==='payrow') {
-      // "Paid (Method)     KES X    · date"
-      ctx.font='15px '+font;
-      ctx.fillStyle=GREEN;
-      ctx.textAlign='left';  ctx.fillText('Paid (' + l.method + ')', pad, y+20);
-      ctx.textAlign='right'; ctx.fillText(fmt(l.amount), W-pad-120, y+20);
-      ctx.font='12px '+font; ctx.fillStyle=GREY;
-      ctx.textAlign='right'; ctx.fillText('· ' + l.date, W-pad, y+20);
-      y+=lineH; return;
-    }
-    if (l.t==='balrow') {
-      ctx.font='bold 16px '+font;
-      ctx.fillStyle = l.red ? RED : GREEN;
-      ctx.textAlign='left';  ctx.fillText(l.l, pad, y+22);
-      ctx.textAlign='right'; ctx.fillText(l.r, W-pad, y+22);
-      y+=lineH+4; return;
-    }
-    if (l.t==='foot') {
-      ctx.font='italic 13px '+font; ctx.fillStyle=GREY; ctx.textAlign='center';
-      ctx.fillText(l.v, W/2, y+15); y+=30; return;
-    }
-    if (l.t==='brand') {
-      ctx.font='bold 18px '+font; ctx.fillStyle=GOLD; ctx.textAlign='center';
-      ctx.fillText(l.v, W/2, y+22); y+=38; return;
-    }
-    if (l.t==='date') {
-      ctx.font='12px '+font; ctx.fillStyle=GREY; ctx.textAlign='center';
-      ctx.fillText(l.v, W/2, y+13); y+=26; return;
-    }
+  var y=pad;
+  function dDiv(){ctx.save();ctx.strokeStyle=DIVIDER;ctx.setLineDash([5,5]);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,y+7);ctx.lineTo(W-pad,y+7);ctx.stroke();ctx.restore();y+=divH+14;}
+  dlines.forEach(function(l){
+    if(l.t==='pdiv'){dDiv();return;}
+    if(l.t==='logo'){ctx.font='italic bold 36px '+font;ctx.fillStyle=GOLD;ctx.textAlign='center';ctx.fillText('Liz Luxe',W/2,y+36);y+=58;return;}
+    if(l.t==='sub'){ctx.font='12px '+font;ctx.fillStyle=GOLD_DIM;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+13);y+=26;return;}
+    if(l.t==='ref'){ctx.font='11px monospace';ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+11);y+=26;return;}
+    if(l.t==='shead'){ctx.font='bold 11px '+font;ctx.fillStyle=GOLD_DIM;ctx.textAlign='left';ctx.fillText(l.v,pad,y+20);y+=36;return;}
+    if(l.t==='head'){ctx.font='bold 16px '+font;ctx.fillStyle=fullyClear?GREEN:GOLD;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+20);y+=36;return;}
+    if(l.t==='total'){ctx.font='bold 17px '+font;ctx.fillStyle=GOLD;ctx.textAlign='left';ctx.fillText(l.l,pad,y+22);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+22);y+=lineH+2;return;}
+    if(l.t==='paid'){ctx.font='bold 20px '+font;ctx.fillStyle=GREEN;ctx.textAlign='left';ctx.fillText(l.l,pad,y+22);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+22);y+=lineH+2;return;}
+    if(l.t==='row'){ctx.font='15px '+font;ctx.fillStyle=l.red?RED:l.green?GREEN:l.muted?GREY:WHITE;ctx.textAlign='left';ctx.fillText(l.l,pad,y+20);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+20);y+=lineH;return;}
+    if(l.t==='foot'){ctx.font='italic 13px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+15);y+=30;return;}
+    if(l.t==='brand'){ctx.font='bold 18px '+font;ctx.fillStyle=GOLD;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+22);y+=38;return;}
+    if(l.t==='date'){ctx.font='12px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+13);y+=26;return;}
   });
-
-  lastReceiptRef = ref;
-  canvas.toBlob(function(blob) {
-    var file = new File([blob], 'LizLuxe-Payment-'+ref+'.png', {type:'image/png'});
-    // Build text fallback
-    var txt = '=== LIZ LUXE ===\nPayment Receipt ' + ref + '\n\nCustomer: ' + custName;
-    if (allPayLogs.length > 0) {
-      allPayLogs.forEach(function(p){
-        txt += '\nPaid (' + p.method + '): ' + fmt(p.amount) + ' · ' + p.date;
-      });
-    } else {
-      txt += '\nPaid (' + method + '): ' + fmt(amtPaid) + ' · ' + date;
-    }
-    txt += '\nBalance: ' + (newBal > 0 ? fmt(newBal) : 'CLEARED') + '\n\n' + (fullyClear ? 'Thank you for settling your account' : 'Thank you for your payment') + '\n✦ Liz Luxe ✦';
-    lastReceiptText = txt;
-    if (navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
-      navigator.share({title:'Liz Luxe Payment Receipt', files:[file]}).catch(function(){shareAsUrl(canvas);});
-    } else { shareAsUrl(canvas); }
-  }, 'image/png');
+  lastReceiptRef=ref;
+  canvas.toBlob(function(blob){
+    var file=new File([blob],'LizLuxe-Payment-'+ref+'.png',{type:'image/png'});
+    var txt='=== LIZ LUXE ===\nPayment Receipt '+ref+'\n\nCustomer: '+custName+'\nDate: '+date+'\nMethod: '+method+'\nPrevious Balance: '+fmt(prevBal)+'\nAmount Paid: '+fmt(amtPaid)+'\nRemaining: '+(newBal>0?fmt(newBal):'CLEARED ✓')+'\n\nThank you for your payment\n✦ Liz Luxe ✦';
+    lastReceiptText=txt;
+    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+      navigator.share({title:'Liz Luxe Payment Receipt',files:[file]}).catch(function(){shareAsUrl(canvas);});
+    }else{shareAsUrl(canvas);}
+  },'image/png');
 }
 
 function returnSale(id) {
@@ -3814,156 +3683,113 @@ function lockApp() {
 function shareReceipt() {
   if (!lastReceiptData) { fallbackCopy(lastReceiptText); return; }
   var d = lastReceiptData;
-
-  // ── Build receipt lines ──
   var lines = [];
-  lines.push({t: 'logo',  v: 'Liz Luxe'});
-  lines.push({t: 'sub',   v: 'LUXURY  ·  BEAUTY  ·  STYLE'});
-  lines.push({t: 'ref',   v: d.ref});
-  lines.push({t: 'div'});
-  lines.push({t: 'row',   l: 'Customer', r: d.cust});
+  lines.push({t:'logo'});
+  lines.push({t:'sub', v:'LUXURY  ·  BEAUTY  ·  STYLE'});
+  lines.push({t:'ref', v:d.ref});
+  lines.push({t:'div'});
+  lines.push({t:'row', l:'Customer', r:d.cust});
+  lines.push({t:'row', l:'Date', r:d.date});
+  lines.push({t:'div'});
+  lines.push({t:'thead'});
   d.items.forEach(function(i) {
-    lines.push({t: 'row', l: i.qty + 'x ' + i.name, r: fmt(i.selling_price * i.qty)});
+    lines.push({t:'trow', name:i.name, qty:i.qty, price:i.selling_price||0, total:(i.selling_price||0)*i.qty});
   });
-  lines.push({t: 'div'});
+  lines.push({t:'div'});
   if (d.discount && d.discount > 0) {
-    lines.push({t: 'row', l: 'Subtotal', r: fmt(d.total + d.discount)});
-    lines.push({t: 'row', l: 'Discount', r: '-' + fmt(d.discount), red: true});
+    lines.push({t:'row', l:'Subtotal', r:fmt(d.total + d.discount)});
+    lines.push({t:'row', l:'Discount', r:'-'+fmt(d.discount), red:true});
   }
-  lines.push({t: 'total', l: 'TOTAL', r: fmt(d.total)});
+  lines.push({t:'total', l:'TOTAL', r:fmt(d.total)});
+  lines.push({t:'div'});
+  lines.push({t:'shead', v:'PAYMENTS'});
   if (d.splitDetails) {
-    lines.push({t: 'row', l: 'Split', r: d.splitDetails, small: true});
-  } else {
-    lines.push({t: 'row', l: 'Paid (' + d.method + ')', r: fmt(d.paid)});
+    lines.push({t:'payrow', l:d.splitDetails, r:fmt(d.paid), date:d.date});
+  } else if (d.method !== 'Credit') {
+    lines.push({t:'payrow', l:d.method, r:fmt(d.paid), date:d.date});
   }
-  if (d.balance > 0) {
-    lines.push({t: 'bal', l: 'Balance Due', r: fmt(d.balance), red: true});
-  } else {
-    lines.push({t: 'row', l: 'Change', r: fmt(d.paid - d.total), green: true});
+  if (d.payLog && d.payLog.length) {
+    d.payLog.forEach(function(p){ lines.push({t:'payrow', l:p.method, r:fmt(p.amount), date:p.date}); });
   }
-  lines.push({t: 'div'});
-  lines.push({t: 'foot', v: 'Thank you for shopping with'});
-  lines.push({t: 'brand', v: '✦  Liz Luxe  ✦'});
-  lines.push({t: 'date', v: d.date});
+  if (d.balance > 0) { lines.push({t:'balrow', l:'Balance Due', r:fmt(d.balance), red:true}); }
+  else { lines.push({t:'balrow', l:'Balance', r:'CLEARED ✓', green:true}); }
+  lines.push({t:'div'});
+  lines.push({t:'foot', v:'Thank you for shopping with'});
+  lines.push({t:'brand', v:'✦  Liz Luxe  ✦'});
+  lines.push({t:'date', v:d.date});
 
-  // ── Canvas setup ──
-  var W = 640, pad = 48, font = 'Georgia, serif';
-  var GOLD = '#C9972A', GOLD_DIM = '#8a6820', WHITE = '#f0ead6', GREY = '#6a6050';
-  var BG = '#0f0f0f', BG2 = '#1a1a1a', DIVIDER = 'rgba(201,151,42,0.3)';
-  var RED = '#e06060', GREEN = '#7bc950';
-  var canvas = document.createElement('canvas');
-  var ctx = canvas.getContext('2d');
-
-  // Measure height
-  var lineH = 38, divH = 20, totalH = pad * 2;
-  lines.forEach(function(l) {
-    if (l.t === 'div') totalH += divH + 16;
-    else if (l.t === 'logo') totalH += 62;
-    else if (l.t === 'sub' || l.t === 'ref') totalH += 28;
-    else if (l.t === 'foot') totalH += 32;
-    else if (l.t === 'brand') totalH += 40;
-    else if (l.t === 'date') totalH += 28;
-    else totalH += lineH;
+  var W=680,pad=40,font='Georgia, serif';
+  var GOLD='#C9972A',GOLD_DIM='#8a6820',WHITE='#f0ead6',GREY='#6a6050';
+  var BG='#0f0f0f',DIVIDER='rgba(201,151,42,0.3)',RED='#e06060',GREEN='#7bc950';
+  var canvas=document.createElement('canvas');
+  var ctx=canvas.getContext('2d');
+  var lineH=36,divH=18,totalH=pad*2;
+  lines.forEach(function(l){
+    if(l.t==='div')totalH+=divH+14;
+    else if(l.t==='logo')totalH+=60;
+    else if(l.t==='sub'||l.t==='ref')totalH+=26;
+    else if(l.t==='foot')totalH+=30;
+    else if(l.t==='brand')totalH+=40;
+    else if(l.t==='date')totalH+=26;
+    else if(l.t==='thead')totalH+=32;
+    else if(l.t==='trow')totalH+=lineH+4;
+    else if(l.t==='shead')totalH+=28;
+    else totalH+=lineH;
   });
-  totalH += 20;
-
-  canvas.width = W;
-  canvas.height = totalH;
-
-  // Background
-  ctx.fillStyle = BG;
-  ctx.fillRect(0, 0, W, totalH);
-
-  // Gold border
-  ctx.strokeStyle = GOLD;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(6, 6, W - 12, totalH - 12);
-
-  // Subtle inner glow line
-  ctx.strokeStyle = 'rgba(201,151,42,0.15)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(12, 12, W - 24, totalH - 24);
-
-  // Jagged top/bottom (gold tinted)
-  var sawSize = 10;
-  ctx.fillStyle = '#050505';
-  for (var xi = 0; xi < W; xi += sawSize * 2) {
-    ctx.beginPath(); ctx.moveTo(xi, 6); ctx.lineTo(xi + sawSize, 6 + sawSize); ctx.lineTo(xi + sawSize * 2, 6); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(xi, totalH - 6); ctx.lineTo(xi + sawSize, totalH - 6 - sawSize); ctx.lineTo(xi + sawSize * 2, totalH - 6); ctx.fill();
+  totalH+=24;
+  canvas.width=W; canvas.height=totalH;
+  ctx.fillStyle=BG; ctx.fillRect(0,0,W,totalH);
+  ctx.strokeStyle=GOLD; ctx.lineWidth=2; ctx.strokeRect(6,6,W-12,totalH-12);
+  ctx.strokeStyle='rgba(201,151,42,0.15)'; ctx.lineWidth=1; ctx.strokeRect(12,12,W-24,totalH-24);
+  var sawSize=10; ctx.fillStyle='#050505';
+  for(var xi=0;xi<W;xi+=sawSize*2){
+    ctx.beginPath();ctx.moveTo(xi,6);ctx.lineTo(xi+sawSize,6+sawSize);ctx.lineTo(xi+sawSize*2,6);ctx.fill();
+    ctx.beginPath();ctx.moveTo(xi,totalH-6);ctx.lineTo(xi+sawSize,totalH-6-sawSize);ctx.lineTo(xi+sawSize*2,totalH-6);ctx.fill();
   }
-
-  var y = pad;
-
-  function drawDiv() {
-    ctx.save();
-    ctx.strokeStyle = DIVIDER;
-    ctx.setLineDash([5, 5]);
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(pad, y + 8); ctx.lineTo(W - pad, y + 8); ctx.stroke();
-    ctx.restore();
-    y += divH + 16;
-  }
-
-  lines.forEach(function(l) {
-    if (l.t === 'div') { drawDiv(); return; }
-    if (l.t === 'logo') {
-      ctx.font = 'italic bold 38px ' + font;
-      ctx.fillStyle = GOLD;
-      ctx.textAlign = 'center';
-      ctx.fillText('Liz Luxe', W / 2, y + 38);
-      y += 62; return;
+  var y=pad;
+  var col={name:pad, qty:W*0.56, price:W*0.71, total:W-pad};
+  function dDiv(){ctx.save();ctx.strokeStyle=DIVIDER;ctx.setLineDash([5,5]);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,y+8);ctx.lineTo(W-pad,y+8);ctx.stroke();ctx.restore();y+=divH+14;}
+  lines.forEach(function(l){
+    if(l.t==='div'){dDiv();return;}
+    if(l.t==='logo'){ctx.font='italic bold 38px '+font;ctx.fillStyle=GOLD;ctx.textAlign='center';ctx.fillText('Liz Luxe',W/2,y+38);y+=60;return;}
+    if(l.t==='sub'){ctx.font='12px '+font;ctx.fillStyle=GOLD_DIM;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+13);y+=26;return;}
+    if(l.t==='ref'){ctx.font='11px monospace';ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+12);y+=26;return;}
+    if(l.t==='row'){ctx.font='14px '+font;ctx.fillStyle=l.red?RED:l.green?GREEN:WHITE;ctx.textAlign='left';ctx.fillText(l.l,pad,y+20);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+20);y+=lineH;return;}
+    if(l.t==='shead'){ctx.font='bold 11px '+font;ctx.fillStyle=GOLD_DIM;ctx.textAlign='left';ctx.fillText(l.v,pad,y+18);y+=28;return;}
+    if(l.t==='thead'){
+      ctx.font='bold 11px '+font;ctx.fillStyle=GREY;
+      ctx.textAlign='left';ctx.fillText('ITEM',col.name,y+18);
+      ctx.textAlign='right';ctx.fillText('QTY',col.qty,y+18);
+      ctx.textAlign='right';ctx.fillText('PRICE',col.price,y+18);
+      ctx.textAlign='right';ctx.fillText('TOTAL',col.total,y+18);
+      ctx.save();ctx.strokeStyle=DIVIDER;ctx.lineWidth=1;ctx.setLineDash([]);
+      ctx.beginPath();ctx.moveTo(pad,y+24);ctx.lineTo(W-pad,y+24);ctx.stroke();ctx.restore();y+=32;return;
     }
-    if (l.t === 'sub') {
-      ctx.font = '13px ' + font;
-      ctx.fillStyle = GOLD_DIM;
-      ctx.textAlign = 'center';
-      ctx.fillText(l.v, W / 2, y + 14);
-      y += 28; return;
+    if(l.t==='trow'){
+      ctx.font='14px '+font;ctx.fillStyle=WHITE;
+      ctx.textAlign='left';ctx.fillText(l.name,col.name,y+20);
+      ctx.textAlign='right';ctx.fillText(String(l.qty),col.qty,y+20);
+      ctx.textAlign='right';ctx.fillText('KES '+Math.round(l.price).toLocaleString(),col.price,y+20);
+      ctx.font='bold 14px '+font;ctx.fillStyle=GOLD;
+      ctx.textAlign='right';ctx.fillText('KES '+Math.round(l.total).toLocaleString(),col.total,y+20);
+      y+=lineH+4;return;
     }
-    if (l.t === 'ref') {
-      ctx.font = '11px monospace';
-      ctx.fillStyle = GREY;
-      ctx.textAlign = 'center';
-      ctx.fillText(l.v, W / 2, y + 12);
-      y += 28; return;
+    if(l.t==='total'){ctx.font='bold 20px '+font;ctx.fillStyle=GOLD;ctx.textAlign='left';ctx.fillText(l.l,pad,y+24);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+24);y+=lineH+4;return;}
+    if(l.t==='payrow'){
+      var dStr='';
+      if(l.date){try{dStr=new Date(l.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short',year:'numeric'});}catch(e){dStr=l.date;}}
+      ctx.font='13px '+font;ctx.fillStyle=GREEN;
+      ctx.textAlign='left';ctx.fillText(l.l,pad,y+20);
+      ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(dStr,W/2,y+20);
+      ctx.fillStyle=GREEN;ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+20);
+      y+=lineH;return;
     }
-    if (l.t === 'total') {
-      ctx.font = 'bold 20px ' + font;
-      ctx.fillStyle = GOLD;
-      ctx.textAlign = 'left'; ctx.fillText(l.l, pad, y + 22);
-      ctx.textAlign = 'right'; ctx.fillText(l.r, W - pad, y + 22);
-      y += lineH + 4; return;
-    }
-    if (l.t === 'row' || l.t === 'bal') {
-      var fs = l.small ? '12px' : '15px';
-      ctx.font = fs + ' ' + font;
-      ctx.fillStyle = l.red ? RED : l.green ? GREEN : WHITE;
-      ctx.textAlign = 'left'; ctx.fillText(l.l, pad, y + 20);
-      ctx.textAlign = 'right'; ctx.fillText(l.r, W - pad, y + 20);
-      y += lineH; return;
-    }
-    if (l.t === 'foot') {
-      ctx.font = 'italic 13px ' + font;
-      ctx.fillStyle = GREY;
-      ctx.textAlign = 'center';
-      ctx.fillText(l.v, W / 2, y + 16);
-      y += 32; return;
-    }
-    if (l.t === 'brand') {
-      ctx.font = 'bold 20px ' + font;
-      ctx.fillStyle = GOLD;
-      ctx.textAlign = 'center';
-      ctx.fillText(l.v, W / 2, y + 24);
-      y += 40; return;
-    }
-    if (l.t === 'date') {
-      ctx.font = '12px ' + font;
-      ctx.fillStyle = GREY;
-      ctx.textAlign = 'center';
-      ctx.fillText(l.v, W / 2, y + 14);
-      y += 28; return;
-    }
+    if(l.t==='balrow'){ctx.font='bold 15px '+font;ctx.fillStyle=l.red?RED:GREEN;ctx.textAlign='left';ctx.fillText(l.l,pad,y+22);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+22);y+=lineH;return;}
+    if(l.t==='foot'){ctx.font='italic 13px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+16);y+=30;return;}
+    if(l.t==='brand'){ctx.font='bold 20px '+font;ctx.fillStyle=GOLD;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+24);y+=40;return;}
+    if(l.t==='date'){ctx.font='12px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+14);y+=26;return;}
   });
+
 
   // Share as image
   canvas.toBlob(function(blob) {
