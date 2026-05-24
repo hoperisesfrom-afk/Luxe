@@ -1935,10 +1935,11 @@ function cdRecordPayment() {
     return Promise.all(ps);
   }).then(function() {
     var newBalance = Math.max(0, prevBalance - amt);
+    var _snap1 = _cdSales.slice();
     allCustomerSales = [];
     loadCustomers();
     closeCustDetail();
-    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false);
+    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, _snap1);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
   .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
 }
@@ -1962,8 +1963,9 @@ function cdMarkFullyPaid() {
     });
     return Promise.all(ps);
   }).then(function() {
+    var _snap2 = _cdSales.slice();
     allCustomerSales = []; loadCustomers(); closeCustDetail();
-    showDebtReceipt(custName, balance, method, balance, 0, today, true);
+    showDebtReceipt(custName, balance, method, balance, 0, today, true, _snap2);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
@@ -1971,8 +1973,8 @@ function closeCustDetail() {
   document.getElementById('cust-detail-overlay').classList.remove('on');
 }
 
-function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear) {
-  var custSales = allCustomerSales.filter(function(s) {
+function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear, snapSales) {
+  var custSales = (snapSales && snapSales.length) ? snapSales : allCustomerSales.filter(function(s) {
     return (s.customer_name||'').replace(' [RETURNED]','') === custName;
   });
   var ref = genRef();
@@ -3332,10 +3334,11 @@ function cdRecordPayment() {
     return Promise.all(ps);
   }).then(function() {
     var newBalance = Math.max(0, prevBalance - amt);
+    var _snap1 = _cdSales.slice();
     allCustomerSales = [];
     loadCustomers();
     closeCustDetail();
-    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false);
+    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, _snap1);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
   .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
 }
@@ -3359,8 +3362,9 @@ function cdMarkFullyPaid() {
     });
     return Promise.all(ps);
   }).then(function() {
+    var _snap2 = _cdSales.slice();
     allCustomerSales = []; loadCustomers(); closeCustDetail();
-    showDebtReceipt(custName, balance, method, balance, 0, today, true);
+    showDebtReceipt(custName, balance, method, balance, 0, today, true, _snap2);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
