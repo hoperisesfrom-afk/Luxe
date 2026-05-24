@@ -1935,11 +1935,18 @@ function cdRecordPayment() {
     return Promise.all(ps);
   }).then(function() {
     var newBalance = Math.max(0, prevBalance - amt);
-    var _snap1 = _cdSales.slice();
-    allCustomerSales = [];
-    loadCustomers();
-    closeCustDetail();
-    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, _snap1);
+    // Re-fetch updated sales so payment_log includes the payment just made
+    return dbGet('sales', '?id=in.(' + ids.join(',') + ')').then(function(fresh) {
+      // Merge fresh payment_log into _cdSales snapshot for receipt
+      var _snap1 = _cdSales.map(function(s) {
+        var f = fresh.find(function(x){ return x.id === s.id; });
+        return f ? Object.assign({}, s, {payment_log: f.payment_log}) : s;
+      });
+      allCustomerSales = [];
+      loadCustomers();
+      closeCustDetail();
+      showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, _snap1);
+    });
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
   .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
 }
@@ -1963,9 +1970,14 @@ function cdMarkFullyPaid() {
     });
     return Promise.all(ps);
   }).then(function() {
-    var _snap2 = _cdSales.slice();
-    allCustomerSales = []; loadCustomers(); closeCustDetail();
-    showDebtReceipt(custName, balance, method, balance, 0, today, true, _snap2);
+    return dbGet('sales', '?id=in.(' + ids.join(',') + ')').then(function(fresh) {
+      var _snap2 = _cdSales.map(function(s) {
+        var f = fresh.find(function(x){ return x.id === s.id; });
+        return f ? Object.assign({}, s, {payment_log: f.payment_log}) : s;
+      });
+      allCustomerSales = []; loadCustomers(); closeCustDetail();
+      showDebtReceipt(custName, balance, method, balance, 0, today, true, _snap2);
+    });
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
@@ -3334,11 +3346,18 @@ function cdRecordPayment() {
     return Promise.all(ps);
   }).then(function() {
     var newBalance = Math.max(0, prevBalance - amt);
-    var _snap1 = _cdSales.slice();
-    allCustomerSales = [];
-    loadCustomers();
-    closeCustDetail();
-    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, _snap1);
+    // Re-fetch updated sales so payment_log includes the payment just made
+    return dbGet('sales', '?id=in.(' + ids.join(',') + ')').then(function(fresh) {
+      // Merge fresh payment_log into _cdSales snapshot for receipt
+      var _snap1 = _cdSales.map(function(s) {
+        var f = fresh.find(function(x){ return x.id === s.id; });
+        return f ? Object.assign({}, s, {payment_log: f.payment_log}) : s;
+      });
+      allCustomerSales = [];
+      loadCustomers();
+      closeCustDetail();
+      showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, _snap1);
+    });
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
   .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
 }
@@ -3362,9 +3381,14 @@ function cdMarkFullyPaid() {
     });
     return Promise.all(ps);
   }).then(function() {
-    var _snap2 = _cdSales.slice();
-    allCustomerSales = []; loadCustomers(); closeCustDetail();
-    showDebtReceipt(custName, balance, method, balance, 0, today, true, _snap2);
+    return dbGet('sales', '?id=in.(' + ids.join(',') + ')').then(function(fresh) {
+      var _snap2 = _cdSales.map(function(s) {
+        var f = fresh.find(function(x){ return x.id === s.id; });
+        return f ? Object.assign({}, s, {payment_log: f.payment_log}) : s;
+      });
+      allCustomerSales = []; loadCustomers(); closeCustDetail();
+      showDebtReceipt(custName, balance, method, balance, 0, today, true, _snap2);
+    });
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
