@@ -1706,10 +1706,10 @@ function renderHistList(reset) {
     html += '<span class="chip">' + s.method + '</span>';
     html += '<span style="font-weight:700;font-size:13px;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' + (s.balance > 0 ? 'Owes ' + fmt(s.balance) : 'Paid in full') + '</span></div>';
     html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-    html += '<button class="btn bsm" onclick="reshareReceipt(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#128279; Share</button>';
     html += '<button class="btn bsm" onclick="toggleEditSale(' + s.id + ')" style="flex:1;">&#9998; Edit</button>';
     html += '<button class="btn bsm" onclick="openEditItems(' + s.id + ')" style="flex:1;background:var(--gold-bg);color:var(--gold);border-color:transparent;">&#128722; Items</button>';
-    html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617; Return</button>';
+    html += '<button class="btn bsm" onclick="reshareReceipt(' + s.id + ')" style="flex:1;background:var(--s3);color:var(--t);">&#129534; Receipt</button>';
+    html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617;</button>';
     html += '<button class="btn bsm bd" onclick="deleteSale(' + s.id + ')" style="flex:1;">&#128465;</button></div>';
     html += '<div class="edit-sale-panel" id="esp-' + s.id + '">';
     html += '<div class="g12"><label>Customer Name</label><input id="esn-' + s.id + '" value="' + s.customer_name + '"></div>';
@@ -1938,9 +1938,7 @@ function cdRecordPayment() {
     allCustomerSales = [];
     loadCustomers();
     closeCustDetail();
-    var _items1 = [];
-    _cdSales.forEach(function(s){ (s.items||[]).forEach(function(i){ _items1.push(i); }); });
-    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, _items1);
+    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
   .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
 }
@@ -1965,9 +1963,7 @@ function cdMarkFullyPaid() {
     return Promise.all(ps);
   }).then(function() {
     allCustomerSales = []; loadCustomers(); closeCustDetail();
-    var _items2 = [];
-    _cdSales.forEach(function(s){ (s.items||[]).forEach(function(i){ _items2.push(i); }); });
-    showDebtReceipt(custName, balance, method, balance, 0, today, true, _items2);
+    showDebtReceipt(custName, balance, method, balance, 0, today, true);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
@@ -1975,139 +1971,108 @@ function closeCustDetail() {
   document.getElementById('cust-detail-overlay').classList.remove('on');
 }
 
-function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear, saleItems) {
+function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear) {
+  var custSales = allCustomerSales.filter(function(s) {
+    return (s.customer_name||'').replace(' [RETURNED]','') === custName;
+  });
   var ref = genRef();
-  var W = 640, pad = 48, font = 'Georgia, serif';
-  var GOLD = '#C9972A', GOLD_DIM = '#8a6820', WHITE = '#f0ead6', GREY = '#6a6050';
-  var BG = '#0f0f0f', DIVIDER = 'rgba(201,151,42,0.3)', RED = '#e06060', GREEN = '#7bc950';
-
-  var lines = [];
-  lines.push({t:'logo'});
-  lines.push({t:'sub', v:'LUXURY  ·  BEAUTY  ·  STYLE'});
-  lines.push({t:'ref', v: ref});
-  lines.push({t:'pdiv'});
-  lines.push({t:'head', v: fullyClear ? '✦  DEBT CLEARED  ✦' : 'PAYMENT RECEIPT'});
-  lines.push({t:'pdiv'});
-  lines.push({t:'row', l:'Customer', r: custName});
-  lines.push({t:'row', l:'Date', r: date});
-  lines.push({t:'row', l:'Method', r: method});
-  if (saleItems && saleItems.length) {
-    lines.push({t:'pdiv'});
-    saleItems.forEach(function(i) {
-      lines.push({t:'row', l: i.qty + '× ' + i.name, r: fmt((i.selling_price||0)*i.qty), muted: true});
+  var W=640,pad=48,font='Georgia, serif';
+  var GOLD='#C9972A',GOLD_DIM='#8a6820',WHITE='#f0ead6',GREY='#6a6050';
+  var BG='#0f0f0f',DIVIDER='rgba(201,151,42,0.3)',RED='#e06060',GREEN='#7bc950';
+  var dlines=[];
+  dlines.push({t:'logo'});
+  dlines.push({t:'sub',v:'LUXURY  ·  BEAUTY  ·  STYLE'});
+  dlines.push({t:'ref',v:ref});
+  dlines.push({t:'pdiv'});
+  dlines.push({t:'head',v:fullyClear?'✦  DEBT CLEARED  ✦':'PAYMENT RECEIPT'});
+  dlines.push({t:'pdiv'});
+  dlines.push({t:'row',l:'Customer',r:custName});
+  dlines.push({t:'row',l:'Payment Date',r:date});
+  dlines.push({t:'row',l:'Method',r:method});
+  // Original items
+  if(custSales.length>0) {
+    dlines.push({t:'pdiv'});
+    dlines.push({t:'shead',v:'ORIGINAL PURCHASE'});
+    var allIt=[];
+    custSales.forEach(function(s){(s.items||[]).forEach(function(i){allIt.push({qty:i.qty,name:i.name,sp:i.selling_price||0});});});
+    allIt.forEach(function(i){dlines.push({t:'row',l:i.qty+'x '+i.name,r:fmt(i.sp*i.qty)});});
+    var origTot=custSales.reduce(function(s,x){return s+(x.total||0);},0);
+    dlines.push({t:'total',l:'ORDER TOTAL',r:fmt(origTot)});
+  }
+  dlines.push({t:'pdiv'});
+  dlines.push({t:'shead',v:'PAYMENT SUMMARY'});
+  dlines.push({t:'row',l:'Previous Balance',r:fmt(prevBal),muted:true});
+  dlines.push({t:'paid',l:'Amount Paid',r:fmt(amtPaid)});
+  if(newBal>0){dlines.push({t:'row',l:'Remaining Balance',r:fmt(newBal),red:true});}
+  else{dlines.push({t:'row',l:'Balance',r:'CLEARED ✓',green:true});}
+  // Payment history log from all customer sales
+  var allPayLogs = [];
+  custSales.forEach(function(s){
+    (s.payment_log||[]).forEach(function(p){ allPayLogs.push(p); });
+  });
+  if(allPayLogs.length > 0) {
+    dlines.push({t:'pdiv'});
+    dlines.push({t:'shead',v:'PAYMENT HISTORY'});
+    allPayLogs.sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
+    allPayLogs.forEach(function(p){
+      var d = p.date ? new Date(p.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short',year:'numeric'}) : p.date;
+      dlines.push({t:'row',l:d+' · '+p.method,r:fmt(p.amount),green:true});
     });
   }
-  lines.push({t:'pdiv'});
-  lines.push({t:'row', l:'Previous Balance', r: fmt(prevBal), muted: true});
-  lines.push({t:'paid', l:'Amount Paid', r: fmt(amtPaid)});
-  if (newBal > 0) {
-    lines.push({t:'row', l:'Remaining Balance', r: fmt(newBal), red: true});
-  } else {
-    lines.push({t:'row', l:'Balance', r: 'CLEARED ✓', green: true});
-  }
-  lines.push({t:'pdiv'});
-  lines.push({t:'foot', v: fullyClear ? 'Thank you for settling your account' : 'Thank you for your payment'});
-  lines.push({t:'brand', v:'✦  Liz Luxe  ✦'});
-  lines.push({t:'date', v: date});
+  dlines.push({t:'pdiv'});
+  dlines.push({t:'foot',v:fullyClear?'Thank you for settling your account':'Thank you for your payment'});
+  dlines.push({t:'brand',v:'✦  Liz Luxe  ✦'});
+  dlines.push({t:'date',v:date});
 
-  var lineH = 36, divH = 16, totalH = pad * 2;
-  lines.forEach(function(l) {
-    if (l.t === 'pdiv') totalH += divH + 14;
-    else if (l.t === 'logo') totalH += 58;
-    else if (l.t === 'sub' || l.t === 'ref') totalH += 26;
-    else if (l.t === 'head') totalH += 36;
-    else if (l.t === 'foot') totalH += 30;
-    else if (l.t === 'brand') totalH += 38;
-    else if (l.t === 'date') totalH += 26;
-    else totalH += lineH;
+  var lineH=36,divH=16,totalH=pad*2;
+  dlines.forEach(function(l){
+    if(l.t==='pdiv')totalH+=divH+14;
+    else if(l.t==='logo')totalH+=58;
+    else if(l.t==='sub'||l.t==='ref')totalH+=26;
+    else if(l.t==='head'||l.t==='shead')totalH+=36;
+    else if(l.t==='foot')totalH+=30;
+    else if(l.t==='brand')totalH+=38;
+    else if(l.t==='date')totalH+=26;
+    else totalH+=lineH;
   });
-  totalH += 20;
+  totalH+=20;
 
-  var canvas = document.createElement('canvas');
-  canvas.width = W; canvas.height = totalH;
-  var ctx = canvas.getContext('2d');
-
-  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, totalH);
-  ctx.strokeStyle = GOLD; ctx.lineWidth = 2; ctx.strokeRect(6, 6, W - 12, totalH - 12);
-  ctx.strokeStyle = 'rgba(201,151,42,0.15)'; ctx.lineWidth = 1; ctx.strokeRect(12, 12, W - 24, totalH - 24);
-
-  var sawSize = 10;
-  ctx.fillStyle = '#050505';
-  for (var xi = 0; xi < W; xi += sawSize * 2) {
-    ctx.beginPath(); ctx.moveTo(xi, 6); ctx.lineTo(xi + sawSize, 6 + sawSize); ctx.lineTo(xi + sawSize * 2, 6); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(xi, totalH - 6); ctx.lineTo(xi + sawSize, totalH - 6 - sawSize); ctx.lineTo(xi + sawSize * 2, totalH - 6); ctx.fill();
+  var canvas=document.createElement('canvas');
+  canvas.width=W;canvas.height=totalH;
+  var ctx=canvas.getContext('2d');
+  ctx.fillStyle=BG;ctx.fillRect(0,0,W,totalH);
+  ctx.strokeStyle=GOLD;ctx.lineWidth=2;ctx.strokeRect(6,6,W-12,totalH-12);
+  ctx.strokeStyle='rgba(201,151,42,0.15)';ctx.lineWidth=1;ctx.strokeRect(12,12,W-24,totalH-24);
+  var sawSize=10;ctx.fillStyle='#050505';
+  for(var xi=0;xi<W;xi+=sawSize*2){
+    ctx.beginPath();ctx.moveTo(xi,6);ctx.lineTo(xi+sawSize,6+sawSize);ctx.lineTo(xi+sawSize*2,6);ctx.fill();
+    ctx.beginPath();ctx.moveTo(xi,totalH-6);ctx.lineTo(xi+sawSize,totalH-6-sawSize);ctx.lineTo(xi+sawSize*2,totalH-6);ctx.fill();
   }
-
-  var y = pad;
-  function dDiv() {
-    ctx.save(); ctx.strokeStyle = DIVIDER; ctx.setLineDash([5,5]); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(pad, y + 7); ctx.lineTo(W - pad, y + 7); ctx.stroke();
-    ctx.restore(); y += divH + 14;
-  }
-
-  lines.forEach(function(l) {
-    if (l.t === 'pdiv') { dDiv(); return; }
-    if (l.t === 'logo') {
-      ctx.font = 'italic bold 36px ' + font; ctx.fillStyle = GOLD; ctx.textAlign = 'center';
-      ctx.fillText('Liz Luxe', W/2, y + 36); y += 58; return;
-    }
-    if (l.t === 'sub') {
-      ctx.font = '12px ' + font; ctx.fillStyle = GOLD_DIM; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 13); y += 26; return;
-    }
-    if (l.t === 'ref') {
-      ctx.font = '11px monospace'; ctx.fillStyle = GREY; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 11); y += 26; return;
-    }
-    if (l.t === 'head') {
-      ctx.font = 'bold 16px ' + font; ctx.fillStyle = fullyClear ? GREEN : GOLD; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 20); y += 36; return;
-    }
-    if (l.t === 'paid') {
-      ctx.font = 'bold 20px ' + font; ctx.fillStyle = GREEN;
-      ctx.textAlign = 'left'; ctx.fillText(l.l, pad, y + 22);
-      ctx.textAlign = 'right'; ctx.fillText(l.r, W - pad, y + 22);
-      y += lineH + 2; return;
-    }
-    if (l.t === 'row') {
-      ctx.font = '15px ' + font;
-      ctx.fillStyle = l.red ? RED : l.green ? GREEN : l.muted ? GREY : WHITE;
-      ctx.textAlign = 'left'; ctx.fillText(l.l, pad, y + 20);
-      ctx.textAlign = 'right'; ctx.fillText(l.r, W - pad, y + 20);
-      y += lineH; return;
-    }
-    if (l.t === 'foot') {
-      ctx.font = 'italic 13px ' + font; ctx.fillStyle = GREY; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 15); y += 30; return;
-    }
-    if (l.t === 'brand') {
-      ctx.font = 'bold 18px ' + font; ctx.fillStyle = GOLD; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 22); y += 38; return;
-    }
-    if (l.t === 'date') {
-      ctx.font = '12px ' + font; ctx.fillStyle = GREY; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 13); y += 26; return;
-    }
+  var y=pad;
+  function dDiv(){ctx.save();ctx.strokeStyle=DIVIDER;ctx.setLineDash([5,5]);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,y+7);ctx.lineTo(W-pad,y+7);ctx.stroke();ctx.restore();y+=divH+14;}
+  dlines.forEach(function(l){
+    if(l.t==='pdiv'){dDiv();return;}
+    if(l.t==='logo'){ctx.font='italic bold 36px '+font;ctx.fillStyle=GOLD;ctx.textAlign='center';ctx.fillText('Liz Luxe',W/2,y+36);y+=58;return;}
+    if(l.t==='sub'){ctx.font='12px '+font;ctx.fillStyle=GOLD_DIM;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+13);y+=26;return;}
+    if(l.t==='ref'){ctx.font='11px monospace';ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+11);y+=26;return;}
+    if(l.t==='shead'){ctx.font='bold 11px '+font;ctx.fillStyle=GOLD_DIM;ctx.textAlign='left';ctx.fillText(l.v,pad,y+20);y+=36;return;}
+    if(l.t==='head'){ctx.font='bold 16px '+font;ctx.fillStyle=fullyClear?GREEN:GOLD;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+20);y+=36;return;}
+    if(l.t==='total'){ctx.font='bold 17px '+font;ctx.fillStyle=GOLD;ctx.textAlign='left';ctx.fillText(l.l,pad,y+22);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+22);y+=lineH+2;return;}
+    if(l.t==='paid'){ctx.font='bold 20px '+font;ctx.fillStyle=GREEN;ctx.textAlign='left';ctx.fillText(l.l,pad,y+22);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+22);y+=lineH+2;return;}
+    if(l.t==='row'){ctx.font='15px '+font;ctx.fillStyle=l.red?RED:l.green?GREEN:l.muted?GREY:WHITE;ctx.textAlign='left';ctx.fillText(l.l,pad,y+20);ctx.textAlign='right';ctx.fillText(l.r,W-pad,y+20);y+=lineH;return;}
+    if(l.t==='foot'){ctx.font='italic 13px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+15);y+=30;return;}
+    if(l.t==='brand'){ctx.font='bold 18px '+font;ctx.fillStyle=GOLD;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+22);y+=38;return;}
+    if(l.t==='date'){ctx.font='12px '+font;ctx.fillStyle=GREY;ctx.textAlign='center';ctx.fillText(l.v,W/2,y+13);y+=26;return;}
   });
-
-  // Store for sharing
-  lastReceiptRef = ref;
-  canvas.toBlob(function(blob) {
-    var file = new File([blob], 'LizLuxe-Payment-' + ref + '.png', {type: 'image/png'});
-    // Build share text
-    var txt = '=== LIZ LUXE ===\nPayment Receipt ' + ref + '\n\nCustomer: ' + custName +
-      '\nDate: ' + date + '\nMethod: ' + method +
-      '\nPrevious Balance: ' + fmt(prevBal) +
-      '\nAmount Paid: ' + fmt(amtPaid) +
-      '\nRemaining: ' + (newBal > 0 ? fmt(newBal) : 'CLEARED ✓') +
-      '\n\nThank you for your payment\n✦ Liz Luxe ✦';
-    lastReceiptText = txt;
-    if (navigator.share && navigator.canShare && navigator.canShare({files: [file]})) {
-      navigator.share({title: 'Liz Luxe Payment Receipt', files: [file]}).catch(function() { shareAsUrl(canvas); });
-    } else {
-      shareAsUrl(canvas);
-    }
-  }, 'image/png');
+  lastReceiptRef=ref;
+  canvas.toBlob(function(blob){
+    var file=new File([blob],'LizLuxe-Payment-'+ref+'.png',{type:'image/png'});
+    var txt='=== LIZ LUXE ===\nPayment Receipt '+ref+'\n\nCustomer: '+custName+'\nDate: '+date+'\nMethod: '+method+'\nPrevious Balance: '+fmt(prevBal)+'\nAmount Paid: '+fmt(amtPaid)+'\nRemaining: '+(newBal>0?fmt(newBal):'CLEARED ✓')+'\n\nThank you for your payment\n✦ Liz Luxe ✦';
+    lastReceiptText=txt;
+    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+      navigator.share({title:'Liz Luxe Payment Receipt',files:[file]}).catch(function(){shareAsUrl(canvas);});
+    }else{shareAsUrl(canvas);}
+  },'image/png');
 }
 
 function returnSale(id) {
@@ -2635,6 +2600,32 @@ function exportLedger() {
   }).catch(function(e) { toast('Export failed: ' + e.message, 'err'); });
 }
 
+// ── Reshare existing sale receipt from History ──
+function reshareReceipt(id) {
+  var sale = allSales.find(function(s) { return s.id === id; });
+  if (!sale) { toast('Sale not found', 'err'); return; }
+  var items = (sale.items || []).map(function(i) {
+    return {qty: i.qty, name: i.name, selling_price: i.selling_price || i.sp || 0, buying_price: i.buying_price || i.bp || 0};
+  });
+  lastReceiptRef = sale.receipt_ref || genRef();
+  lastReceiptData = {
+    ref: lastReceiptRef, cust: sale.customer_name, date: sale.date,
+    items: items, total: sale.total, paid: sale.paid,
+    balance: sale.balance, method: sale.method,
+    splitDetails: sale.split_details || null, discount: 0
+  };
+  var lines2 = ['=== LIZ LUXE ===','LUXURY · BEAUTY · STYLE', lastReceiptRef,''];
+  lines2.push('Customer: ' + sale.customer_name);
+  items.forEach(function(i){lines2.push(i.qty+'x '+i.name+' — '+fmt(i.selling_price*i.qty));});
+  lines2.push(''); lines2.push('TOTAL: '+fmt(sale.total));
+  lines2.push('Paid: '+fmt(sale.paid));
+  if(sale.balance>0) lines2.push('Balance due: '+fmt(sale.balance));
+  lines2.push(''); lines2.push(sale.date); lines2.push('Thank you for shopping with Liz Luxe!');
+  lastReceiptText = lines2.join('\n');
+  showReceipt(sale.customer_name, sale.date, items, sale.total, sale.paid, sale.balance, sale.method, sale.split_details);
+}
+
+
 function showLedger() {
   var modal = document.getElementById('ledger-modal');
   modal.classList.add('on');
@@ -3121,11 +3112,11 @@ function filterHist() {
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
     html += '<span class="chip">' + s.method + '</span>';
     html += '<span style="font-weight:700;font-size:13px;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' + (s.balance > 0 ? 'Owes ' + fmt(s.balance) : 'Paid in full') + '</span></div>';
-    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-    html += '<button class="btn bsm" onclick="reshareReceipt(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#128279; Share</button>';
+    html += '<div style="display:flex;gap:8px;">';
     html += '<button class="btn bsm" onclick="toggleEditSale(' + s.id + ')" style="flex:1;">&#9998; Edit</button>';
     html += '<button class="btn bsm" onclick="openEditItems(' + s.id + ')" style="flex:1;background:var(--gold-bg);color:var(--gold);border-color:transparent;">&#128722; Items</button>';
-    html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617; Return</button>';
+    html += '<button class="btn bsm" onclick="reshareReceipt(' + s.id + ')" style="flex:1;background:var(--s3);color:var(--t);">&#129534; Receipt</button>';
+    html += '<button class="btn bsm" onclick="returnSale(' + s.id + ')" style="flex:1;background:var(--info-bg);color:var(--info);border-color:transparent;">&#8617;</button>';
     html += '<button class="btn bsm bd" onclick="deleteSale(' + s.id + ')" style="flex:1;">&#128465;</button></div>';
     html += '<div class="edit-sale-panel" id="esp-' + s.id + '">';
     html += '<div class="g12"><label>Customer Name</label><input id="esn-' + s.id + '" value="' + s.customer_name + '"></div>';
@@ -3160,39 +3151,6 @@ function deleteSale(id) {
       allSales = []; loadHist();
     }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
-function reshareReceipt(saleId) {
-  toast('Loading...', 'ok');
-  dbGet('sales', '?id=eq.' + saleId).then(function(data) {
-    if (!data || !data.length) { toast('Sale not found', 'err'); return; }
-    var s = data[0];
-    lastReceiptRef = s.receipt_ref || genRef();
-    lastReceiptData = {
-      ref: lastReceiptRef,
-      cust: s.customer_name || 'Walk-in',
-      date: s.date,
-      items: s.items || [],
-      total: s.total,
-      paid: s.paid,
-      balance: s.balance,
-      method: s.method,
-      splitDetails: s.split_details || null,
-      discount: 0
-    };
-    var ln = ['=== LIZ LUXE ===', 'LUXURY · BEAUTY · STYLE', lastReceiptRef, ''];
-    ln.push('Customer: ' + lastReceiptData.cust);
-    (s.items || []).forEach(function(i) { ln.push(i.qty + 'x ' + i.name + ' — ' + fmt((i.selling_price||0)*i.qty)); });
-    ln.push('');
-    ln.push('TOTAL: ' + fmt(s.total));
-    if (s.split_details) ln.push('Split: ' + s.split_details);
-    else ln.push('Paid (' + s.method + '): ' + fmt(s.paid));
-    if (s.balance > 0) ln.push('Balance due: ' + fmt(s.balance));
-    ln.push(''); ln.push(s.date);
-    ln.push('Thank you for shopping with Liz Luxe!');
-    lastReceiptText = ln.join('\n');
-    shareReceipt();
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
-
 
 // ── Customers Tab ──
 var allCustomerSales = [];
@@ -3379,9 +3337,7 @@ function cdRecordPayment() {
     allCustomerSales = [];
     loadCustomers();
     closeCustDetail();
-    var _items1 = [];
-    _cdSales.forEach(function(s){ (s.items||[]).forEach(function(i){ _items1.push(i); }); });
-    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false, _items1);
+    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
   .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
 }
@@ -3406,9 +3362,7 @@ function cdMarkFullyPaid() {
     return Promise.all(ps);
   }).then(function() {
     allCustomerSales = []; loadCustomers(); closeCustDetail();
-    var _items2 = [];
-    _cdSales.forEach(function(s){ (s.items||[]).forEach(function(i){ _items2.push(i); }); });
-    showDebtReceipt(custName, balance, method, balance, 0, today, true, _items2);
+    showDebtReceipt(custName, balance, method, balance, 0, today, true);
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
@@ -3416,140 +3370,6 @@ function closeCustDetail() {
   document.getElementById('cust-detail-overlay').classList.remove('on');
 }
 
-function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear, saleItems) {
-  var ref = genRef();
-  var W = 640, pad = 48, font = 'Georgia, serif';
-  var GOLD = '#C9972A', GOLD_DIM = '#8a6820', WHITE = '#f0ead6', GREY = '#6a6050';
-  var BG = '#0f0f0f', DIVIDER = 'rgba(201,151,42,0.3)', RED = '#e06060', GREEN = '#7bc950';
-
-  var lines = [];
-  lines.push({t:'logo'});
-  lines.push({t:'sub', v:'LUXURY  ·  BEAUTY  ·  STYLE'});
-  lines.push({t:'ref', v: ref});
-  lines.push({t:'pdiv'});
-  lines.push({t:'head', v: fullyClear ? '✦  DEBT CLEARED  ✦' : 'PAYMENT RECEIPT'});
-  lines.push({t:'pdiv'});
-  lines.push({t:'row', l:'Customer', r: custName});
-  lines.push({t:'row', l:'Date', r: date});
-  lines.push({t:'row', l:'Method', r: method});
-  if (saleItems && saleItems.length) {
-    lines.push({t:'pdiv'});
-    saleItems.forEach(function(i) {
-      lines.push({t:'row', l: i.qty + '× ' + i.name, r: fmt((i.selling_price||0)*i.qty), muted: true});
-    });
-  }
-  lines.push({t:'pdiv'});
-  lines.push({t:'row', l:'Previous Balance', r: fmt(prevBal), muted: true});
-  lines.push({t:'paid', l:'Amount Paid', r: fmt(amtPaid)});
-  if (newBal > 0) {
-    lines.push({t:'row', l:'Remaining Balance', r: fmt(newBal), red: true});
-  } else {
-    lines.push({t:'row', l:'Balance', r: 'CLEARED ✓', green: true});
-  }
-  lines.push({t:'pdiv'});
-  lines.push({t:'foot', v: fullyClear ? 'Thank you for settling your account' : 'Thank you for your payment'});
-  lines.push({t:'brand', v:'✦  Liz Luxe  ✦'});
-  lines.push({t:'date', v: date});
-
-  var lineH = 36, divH = 16, totalH = pad * 2;
-  lines.forEach(function(l) {
-    if (l.t === 'pdiv') totalH += divH + 14;
-    else if (l.t === 'logo') totalH += 58;
-    else if (l.t === 'sub' || l.t === 'ref') totalH += 26;
-    else if (l.t === 'head') totalH += 36;
-    else if (l.t === 'foot') totalH += 30;
-    else if (l.t === 'brand') totalH += 38;
-    else if (l.t === 'date') totalH += 26;
-    else totalH += lineH;
-  });
-  totalH += 20;
-
-  var canvas = document.createElement('canvas');
-  canvas.width = W; canvas.height = totalH;
-  var ctx = canvas.getContext('2d');
-
-  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, totalH);
-  ctx.strokeStyle = GOLD; ctx.lineWidth = 2; ctx.strokeRect(6, 6, W - 12, totalH - 12);
-  ctx.strokeStyle = 'rgba(201,151,42,0.15)'; ctx.lineWidth = 1; ctx.strokeRect(12, 12, W - 24, totalH - 24);
-
-  var sawSize = 10;
-  ctx.fillStyle = '#050505';
-  for (var xi = 0; xi < W; xi += sawSize * 2) {
-    ctx.beginPath(); ctx.moveTo(xi, 6); ctx.lineTo(xi + sawSize, 6 + sawSize); ctx.lineTo(xi + sawSize * 2, 6); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(xi, totalH - 6); ctx.lineTo(xi + sawSize, totalH - 6 - sawSize); ctx.lineTo(xi + sawSize * 2, totalH - 6); ctx.fill();
-  }
-
-  var y = pad;
-  function dDiv() {
-    ctx.save(); ctx.strokeStyle = DIVIDER; ctx.setLineDash([5,5]); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(pad, y + 7); ctx.lineTo(W - pad, y + 7); ctx.stroke();
-    ctx.restore(); y += divH + 14;
-  }
-
-  lines.forEach(function(l) {
-    if (l.t === 'pdiv') { dDiv(); return; }
-    if (l.t === 'logo') {
-      ctx.font = 'italic bold 36px ' + font; ctx.fillStyle = GOLD; ctx.textAlign = 'center';
-      ctx.fillText('Liz Luxe', W/2, y + 36); y += 58; return;
-    }
-    if (l.t === 'sub') {
-      ctx.font = '12px ' + font; ctx.fillStyle = GOLD_DIM; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 13); y += 26; return;
-    }
-    if (l.t === 'ref') {
-      ctx.font = '11px monospace'; ctx.fillStyle = GREY; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 11); y += 26; return;
-    }
-    if (l.t === 'head') {
-      ctx.font = 'bold 16px ' + font; ctx.fillStyle = fullyClear ? GREEN : GOLD; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 20); y += 36; return;
-    }
-    if (l.t === 'paid') {
-      ctx.font = 'bold 20px ' + font; ctx.fillStyle = GREEN;
-      ctx.textAlign = 'left'; ctx.fillText(l.l, pad, y + 22);
-      ctx.textAlign = 'right'; ctx.fillText(l.r, W - pad, y + 22);
-      y += lineH + 2; return;
-    }
-    if (l.t === 'row') {
-      ctx.font = '15px ' + font;
-      ctx.fillStyle = l.red ? RED : l.green ? GREEN : l.muted ? GREY : WHITE;
-      ctx.textAlign = 'left'; ctx.fillText(l.l, pad, y + 20);
-      ctx.textAlign = 'right'; ctx.fillText(l.r, W - pad, y + 20);
-      y += lineH; return;
-    }
-    if (l.t === 'foot') {
-      ctx.font = 'italic 13px ' + font; ctx.fillStyle = GREY; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 15); y += 30; return;
-    }
-    if (l.t === 'brand') {
-      ctx.font = 'bold 18px ' + font; ctx.fillStyle = GOLD; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 22); y += 38; return;
-    }
-    if (l.t === 'date') {
-      ctx.font = '12px ' + font; ctx.fillStyle = GREY; ctx.textAlign = 'center';
-      ctx.fillText(l.v, W/2, y + 13); y += 26; return;
-    }
-  });
-
-  // Store for sharing
-  lastReceiptRef = ref;
-  canvas.toBlob(function(blob) {
-    var file = new File([blob], 'LizLuxe-Payment-' + ref + '.png', {type: 'image/png'});
-    // Build share text
-    var txt = '=== LIZ LUXE ===\nPayment Receipt ' + ref + '\n\nCustomer: ' + custName +
-      '\nDate: ' + date + '\nMethod: ' + method +
-      '\nPrevious Balance: ' + fmt(prevBal) +
-      '\nAmount Paid: ' + fmt(amtPaid) +
-      '\nRemaining: ' + (newBal > 0 ? fmt(newBal) : 'CLEARED ✓') +
-      '\n\nThank you for your payment\n✦ Liz Luxe ✦';
-    lastReceiptText = txt;
-    if (navigator.share && navigator.canShare && navigator.canShare({files: [file]})) {
-      navigator.share({title: 'Liz Luxe Payment Receipt', files: [file]}).catch(function() { shareAsUrl(canvas); });
-    } else {
-      shareAsUrl(canvas);
-    }
-  }, 'image/png');
-}
 
 function returnSale(id) {
   var sale = allSales.find(function(s) { return s.id === id; });
