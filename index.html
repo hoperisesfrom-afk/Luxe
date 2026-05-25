@@ -797,10 +797,18 @@ select option{background:#1c1c1c}
         <div style="font-size:11px;color:var(--t2);" id="ledger-subtitle">All transactions</div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <select id="ledger-month-sel" onchange="showLedger()" style="width:auto;padding:7px 10px;font-size:12px;background:var(--s3);"></select>
-      <button onclick="exportLedger()" style="background:var(--gold);border:none;border-radius:var(--rs);padding:8px 12px;font-size:12px;font-weight:700;color:#0a0a0a;cursor:pointer;">&#128229; Export</button>
+    <button onclick="exportLedger()" style="background:var(--gold);border:none;border-radius:var(--rs);padding:8px 12px;font-size:12px;font-weight:700;color:#0a0a0a;cursor:pointer;">&#128229; Export</button>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--b);flex-wrap:wrap;">
+    <select id="ledger-month-sel" onchange="onLedgerMonthChange()" style="flex:1;padding:8px 10px;font-size:12px;background:var(--s3);min-width:120px;">
+      <option value="">📅 Pick month...</option>
+    </select>
+    <div style="display:flex;gap:6px;align-items:center;flex:2;">
+      <input type="date" id="ledger-from" onchange="onLedgerDateChange()" style="flex:1;padding:8px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);">
+      <span style="color:var(--t2);font-size:12px;">to</span>
+      <input type="date" id="ledger-to" onchange="onLedgerDateChange()" style="flex:1;padding:8px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);">
     </div>
+    <button onclick="clearLedgerFilter()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:8px 10px;font-size:11px;color:var(--t2);cursor:pointer;">All</button>
   </div>
   <div class="ledger-body" id="ledger-body">
     <div class="empty">Loading...</div>
@@ -2075,28 +2083,38 @@ function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fully
   },'image/png');
 }
 
+
+function loadDebt() { loadCustomers(); }
+
 function returnSale(id) {
   var sale = allSales.find(function(s) { return s.id === id; });
   if (!sale) return;
-  var itemList = (sale.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
-  if (!confirm('Process return for ' + sale.customer_name + '?\n' + itemList + '\nTotal: ' + fmt(sale.total) + '\n\nThis will restore stock and mark sale as returned.')) return;
-  // Restore inventory stock
-  var ps = (sale.items || []).map(function(i) {
-    var it = inv.find(function(iv) { return iv.id === i.id; });
+  var itemList = (sale.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(', ');
+  var reason = prompt('Reason for return (optional):','');
+  if (reason === null) return;
+  if (!confirm('Process return for '+sale.customer_name+'?\n'+itemList+'\nTotal: '+fmt(sale.total)+'\n\nOriginal sale stays intact. A return record will be created.')) return;
+  var today = new Date().toISOString().slice(0,10);
+  var ps = (sale.items||[]).map(function(i) {
+    var it = inv.find(function(iv){return iv.id===i.id;});
     if (!it) return Promise.resolve();
     var nr = it.remaining + i.qty;
-    return dbPatch('inventory', {remaining: nr}, '?id=eq.' + i.id).then(function() { it.remaining = nr; });
+    return dbPatch('inventory',{remaining:nr},'?id=eq.'+i.id).then(function(){it.remaining=nr;});
   });
-  // Mark sale as returned (zero out paid, set balance to 0, add note)
-  ps.push(dbPatch('sales', {paid: 0, balance: 0, method: 'Returned', customer_name: sale.customer_name + ' [RETURNED]'}, '?id=eq.' + id));
-  Promise.all(ps).then(function() {
-    toast('Return processed — stock restored', 'ok');
-    allSales = []; allCustomerSales = [];
+  ps.push(dbPost('returns',{
+    original_sale_id: sale.id,
+    customer_name: sale.customer_name,
+    items: sale.items,
+    total: sale.total,
+    date: today,
+    reason: reason||''
+  }));
+  Promise.all(ps).then(function(){
+    toast('Return recorded — original sale preserved ✓','ok');
+    allSales=[]; allCustomerSales=[];
     loadHist(); checkLow();
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  }).catch(function(e){toast('Error: '+e.message,'err');});
 }
 
-function loadDebt() { loadCustomers(); }
 
 function selDM(el, key, m) {
   el.closest('.mg').querySelectorAll('.mb').forEach(function(b) { b.classList.remove('sel'); });
@@ -2636,162 +2654,191 @@ function reshareReceipt(id) {
 }
 
 
-function showLedger() {
-  var modal = document.getElementById('ledger-modal');
-  modal.classList.add('on');
-  document.getElementById('ledger-body').innerHTML = '<div class="empty">Loading...</div>';
-
-  // Populate month selector
+function getLedgerRange() {
+  var from = document.getElementById('ledger-from').value;
+  var to = document.getElementById('ledger-to').value;
+  if (from && to) return {from:from, to:to};
+  if (from && !to) return {from:from, to:from};
+  // Fall back to month selector
   var sel = document.getElementById('ledger-month-sel');
-  var now = new Date();
-  if (sel.options.length === 0) {
-    for (var i = 0; i < 6; i++) {
-      var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      var val = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-      var label = d.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+  var month = sel.value;
+  if (!month) {
+    var now = new Date();
+    month = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  }
+  var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+  return {from: month+'-01', to: month+'-'+String(last.getDate()).padStart(2,'0')};
+}
+
+function onLedgerMonthChange() {
+  document.getElementById('ledger-from').value = '';
+  document.getElementById('ledger-to').value = '';
+  loadLedgerData();
+}
+
+function onLedgerDateChange() {
+  document.getElementById('ledger-month-sel').value = '';
+  loadLedgerData();
+}
+
+function clearLedgerFilter() {
+  document.getElementById('ledger-from').value = '';
+  document.getElementById('ledger-to').value = '';
+  document.getElementById('ledger-month-sel').value = '';
+  // Load all time
+  loadLedgerData(true);
+}
+
+function showLedger() {
+  document.getElementById('ledger-modal').classList.add('on');
+  // Populate month selector once
+  var sel = document.getElementById('ledger-month-sel');
+  if (sel.options.length <= 1) {
+    var now = new Date();
+    for (var i = 0; i < 12; i++) {
+      var d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      var val = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0');
+      var label = d2.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
       var opt = document.createElement('option');
       opt.value = val; opt.textContent = label;
       if (i === 0) opt.selected = true;
       sel.appendChild(opt);
     }
   }
-  var month = sel.value;
-  var from = month + '-01';
-  var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
-  var to = month + '-' + String(last.getDate()).padStart(2,'0');
+  loadLedgerData();
+}
 
-  document.getElementById('ledger-subtitle').textContent = new Date(from + 'T12:00:00').toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+function loadLedgerData(allTime) {
+  document.getElementById('ledger-body').innerHTML = '<div class="empty">Loading...</div>';
+  var from, to;
+  if (allTime) {
+    from = '2020-01-01';
+    to = new Date().toISOString().slice(0,10);
+    document.getElementById('ledger-subtitle').textContent = 'All transactions';
+  } else {
+    var range = getLedgerRange();
+    from = range.from; to = range.to;
+    try {
+      var fd = new Date(from+'T12:00:00'); var td = new Date(to+'T12:00:00');
+      document.getElementById('ledger-subtitle').textContent =
+        from === to ? fd.toLocaleDateString('en-KE',{day:'numeric',month:'long',year:'numeric'}) :
+        fd.toLocaleDateString('en-KE',{day:'numeric',month:'short'}) + ' – ' + td.toLocaleDateString('en-KE',{day:'numeric',month:'short',year:'numeric'});
+    } catch(e) {}
+  }
 
   Promise.all([
-    dbGet('sales', '?date=gte.' + from + '&date=lte.' + to + '&order=date.asc'),
-    dbGet('deductions', '?date=gte.' + from + '&date=lte.' + to + '&order=date.asc'),
-    dbGet('transfers', '?date=gte.' + from + '&date=lte.' + to + '&order=id.asc')
+    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
+    dbGet('deductions', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
+    dbGet('transfers', '?date=gte.'+from+'&date=lte.'+to+'&order=id.asc'),
+    dbGet('returns', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc')
   ]).then(function(r) {
-    var sales = r[0], deds = r[1], transfers = r[2];
-
-    // Build unified event list
+    var sales = r[0], deds = r[1], transfers = r[2], returns = r[3];
     var events = [];
+
+    // Sales — all kept immutable, no mutation check needed
     sales.forEach(function(s) {
-      var isReturned = (s.method||'').indexOf('Returned') >= 0;
       events.push({
-        date: s.date, time: s.created_at || s.date,
-        type: isReturned ? 'returned' : (s.balance > 0 ? 'credit' : 'sale'),
-        title: isReturned ? 'Return — ' + s.customer_name.replace(' [RETURNED]','') : s.customer_name,
-        sub: (s.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(', ') + ' · ' + (s.method||''),
-        amount: isReturned ? 0 : (s.paid||0),
-        total: s.total||0,
-        balance: s.balance||0,
-        ref: s.receipt_ref||'',
-        sign: isReturned ? 0 : 1
+        date: s.date, time: s.created_at||s.date,
+        type: s.balance > 0 ? 'credit' : 'sale',
+        title: s.customer_name,
+        sub: (s.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(', ')+' · '+(s.method||''),
+        amount: s.paid||0, total: s.total||0, balance: s.balance||0,
+        ref: s.receipt_ref||'', sign: 1
       });
     });
+
+    // Returns — shown as separate negative entries
+    returns.forEach(function(ret) {
+      events.push({
+        date: ret.date, time: ret.date,
+        type: 'returned',
+        title: '↩ Return: '+(ret.customer_name||''),
+        sub: (ret.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(', ')+(ret.reason?' · '+ret.reason:''),
+        amount: ret.total||0, sign: -1
+      });
+    });
+
     deds.forEach(function(d) {
-      var isInj = d.type === 'injection';
+      var isInj = d.type==='injection';
       events.push({
-        date: d.date, time: d.created_at || d.date,
-        type: isInj ? 'capital' : 'expense',
-        title: isInj ? '+ Capital: ' + (d.reason||'Injection') : '- ' + (d.reason||'Expense'),
-        sub: (d.category||'') + (d.wallet ? ' · from ' + d.wallet : ''),
-        amount: d.amount||0,
-        sign: isInj ? 1 : -1
+        date: d.date, time: d.created_at||d.date,
+        type: isInj?'capital':'expense',
+        title: isInj?'+ Capital: '+(d.reason||'Injection'):'- '+(d.reason||'Expense'),
+        sub: (d.category||'')+(d.wallet?' · from '+d.wallet:''),
+        amount: d.amount||0, sign: isInj?1:-1
       });
     });
+
     transfers.forEach(function(t) {
       events.push({
-        date: t.date, time: t.created_at || t.date,
+        date: t.date, time: t.created_at||t.date,
         type: 'transfer',
-        title: 'Transfer: ' + t.from_wallet + ' → ' + t.to_wallet,
-        sub: t.note || '',
-        amount: t.amount||0,
-        sign: 0
+        title: 'Transfer: '+t.from_wallet+' → '+t.to_wallet,
+        sub: t.note||'', amount: t.amount||0, sign: 0
       });
     });
 
-    // Sort by date then created_at
-    events.sort(function(a,b) {
-      return (a.date+a.time).localeCompare(b.date+b.time);
-    });
-
-    // Group by date and compute running balance
-    var byDate = {};
-    var dateOrder = [];
-    events.forEach(function(e) {
-      if (!byDate[e.date]) { byDate[e.date] = []; dateOrder.push(e.date); }
+    events.sort(function(a,b){return (a.date+a.time).localeCompare(b.date+b.time);});
+    var byDate={}, dateOrder=[];
+    events.forEach(function(e){
+      if(!byDate[e.date]){byDate[e.date]=[];dateOrder.push(e.date);}
       byDate[e.date].push(e);
     });
 
-    if (!dateOrder.length) {
-      document.getElementById('ledger-body').innerHTML = '<div class="empty">No transactions this month</div>';
-      return;
-    }
+    if(!dateOrder.length){document.getElementById('ledger-body').innerHTML='<div class="empty">No transactions for this period</div>';return;}
 
-    // Compute running totals
-    var runningBalance = 0;
-    var html = '';
-    dateOrder.forEach(function(date) {
-      var dayEvents = byDate[date];
-      var dayIn = 0, dayOut = 0, dayCredit = 0;
-      dayEvents.forEach(function(e) {
-        if (e.sign > 0) dayIn += e.amount;
-        else if (e.sign < 0) dayOut += e.amount;
-        else if (e.type === 'credit') dayCredit += e.balance;
+    var runningBalance=0, html='';
+    dateOrder.forEach(function(date){
+      var dayEvents=byDate[date];
+      var dayIn=0,dayOut=0,dayCredit=0;
+      dayEvents.forEach(function(e){
+        if(e.sign>0)dayIn+=e.amount;
+        else if(e.sign<0)dayOut+=e.amount;
+        else if(e.type==='credit')dayCredit+=e.balance;
       });
-
-      var displayDate = new Date(date + 'T12:00:00').toLocaleDateString('en-KE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-
-      html += '<div class="ledger-day">';
-      html += '<div class="ledger-day-header">';
-      html += '<span class="ledger-day-title">&#128197; ' + displayDate + '</span>';
-      html += '<span style="font-size:11px;color:var(--t2);">' + dayEvents.length + ' event' + (dayEvents.length!==1?'s':'') + '</span>';
-      html += '</div>';
-
-      // Day summary chips
-      html += '<div class="ledger-day-summary">';
-      if (dayIn > 0) html += '<div class="ldsum"><span class="ldsum-lbl">In </span><span class="ldsum-val" style="color:var(--ok);">+'+fmt(dayIn)+'</span></div>';
-      if (dayOut > 0) html += '<div class="ldsum"><span class="ldsum-lbl">Out </span><span class="ldsum-val" style="color:var(--err);">-'+fmt(dayOut)+'</span></div>';
-      if (dayCredit > 0) html += '<div class="ldsum"><span class="ldsum-lbl">Credit </span><span class="ldsum-val" style="color:#ff9800;">'+fmt(dayCredit)+'</span></div>';
-      html += '</div>';
-
-      dayEvents.forEach(function(e) {
-        if (e.sign > 0) runningBalance += e.amount;
-        else if (e.sign < 0) runningBalance -= e.amount;
-
-        var icon, cls, amtColor, amtPrefix;
-        if (e.type === 'sale') { icon = '🛍'; cls = 'l-sale'; amtColor = 'var(--ok)'; amtPrefix = '+'; }
-        else if (e.type === 'credit') { icon = '📋'; cls = 'l-credit'; amtColor = '#ff9800'; amtPrefix = '+'; }
-        else if (e.type === 'expense') { icon = '💸'; cls = 'l-expense'; amtColor = 'var(--err)'; amtPrefix = '-'; }
-        else if (e.type === 'capital') { icon = '💰'; cls = 'l-capital'; amtColor = '#9c27b0'; amtPrefix = '+'; }
-        else if (e.type === 'transfer') { icon = '🔄'; cls = 'l-transfer'; amtColor = 'var(--info)'; amtPrefix = '↔'; }
-        else { icon = '↩'; cls = 'l-returned'; amtColor = 'var(--t2)'; amtPrefix = ''; }
-
-        html += '<div class="ledger-entry ' + cls + '">';
-        html += '<div class="ledger-icon">' + icon + '</div>';
-        html += '<div class="ledger-desc"><div class="ledger-title">' + e.title + '</div>';
-        if (e.sub) html += '<div class="ledger-sub">' + e.sub + '</div>';
-        if (e.ref) html += '<div class="ledger-sub" style="font-family:monospace;">' + e.ref + '</div>';
-        html += '</div>';
-        html += '<div class="ledger-right">';
-        if (e.type === 'credit') {
-          html += '<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.total)+'</div>';
-          html += '<div class="ledger-running" style="color:#ff9800;">owes '+fmt(e.balance)+'</div>';
-        } else if (e.type !== 'transfer' && e.type !== 'returned') {
-          html += '<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.amount)+'</div>';
-          html += '<div class="ledger-running">bal: '+fmt(runningBalance)+'</div>';
-        } else if (e.type === 'transfer') {
-          html += '<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.amount)+'</div>';
+      var displayDate=new Date(date+'T12:00:00').toLocaleDateString('en-KE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+      html+='<div class="ledger-day">';
+      html+='<div class="ledger-day-header"><span class="ledger-day-title">📅 '+displayDate+'</span><span style="font-size:11px;color:var(--t2);">'+dayEvents.length+' event'+(dayEvents.length!==1?'s':'')+'</span></div>';
+      html+='<div class="ledger-day-summary">';
+      if(dayIn>0)html+='<div class="ldsum"><span class="ldsum-lbl">In </span><span class="ldsum-val" style="color:var(--ok);">+'+fmt(dayIn)+'</span></div>';
+      if(dayOut>0)html+='<div class="ldsum"><span class="ldsum-lbl">Out </span><span class="ldsum-val" style="color:var(--err);">-'+fmt(dayOut)+'</span></div>';
+      if(dayCredit>0)html+='<div class="ldsum"><span class="ldsum-lbl">Credit </span><span class="ldsum-val" style="color:#ff9800;">'+fmt(dayCredit)+'</span></div>';
+      html+='</div>';
+      dayEvents.forEach(function(e){
+        if(e.sign>0)runningBalance+=e.amount;
+        else if(e.sign<0)runningBalance-=e.amount;
+        var icon,cls,amtColor,amtPrefix;
+        if(e.type==='sale'){icon='🛍';cls='l-sale';amtColor='var(--ok)';amtPrefix='+';}
+        else if(e.type==='credit'){icon='📋';cls='l-credit';amtColor='#ff9800';amtPrefix='+';}
+        else if(e.type==='expense'){icon='💸';cls='l-expense';amtColor='var(--err)';amtPrefix='-';}
+        else if(e.type==='capital'){icon='💰';cls='l-capital';amtColor='#9c27b0';amtPrefix='+';}
+        else if(e.type==='transfer'){icon='🔄';cls='l-transfer';amtColor='var(--info)';amtPrefix='↔';}
+        else if(e.type==='returned'){icon='↩';cls='l-returned';amtColor='var(--err)';amtPrefix='-';}
+        else{icon='?';cls='';amtColor='var(--t2)';amtPrefix='';}
+        html+='<div class="ledger-entry '+cls+'">';
+        html+='<div class="ledger-icon">'+icon+'</div>';
+        html+='<div class="ledger-desc"><div class="ledger-title">'+e.title+'</div>';
+        if(e.sub)html+='<div class="ledger-sub">'+e.sub+'</div>';
+        if(e.ref)html+='<div class="ledger-sub" style="font-family:monospace;">'+e.ref+'</div>';
+        html+='</div><div class="ledger-right">';
+        if(e.type==='credit'){
+          html+='<div class="ledger-amt" style="color:'+amtColor+';">+'+fmt(e.total)+'</div>';
+          html+='<div class="ledger-running" style="color:#ff9800;">owes '+fmt(e.balance)+'</div>';
+        } else if(e.type==='transfer'){
+          html+='<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.amount)+'</div>';
         } else {
-          html += '<div class="ledger-amt" style="color:var(--t2);">Returned</div>';
+          html+='<div class="ledger-amt" style="color:'+amtColor+';">'+amtPrefix+fmt(e.amount)+'</div>';
+          html+='<div class="ledger-running">bal: '+fmt(runningBalance)+'</div>';
         }
-        html += '</div></div>';
+        html+='</div></div>';
       });
-      html += '</div>';
+      html+='</div>';
     });
-
-    document.getElementById('ledger-body').innerHTML = html;
-  }).catch(function(e) {
-    document.getElementById('ledger-body').innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
-  });
+    document.getElementById('ledger-body').innerHTML=html;
+  }).catch(function(e){document.getElementById('ledger-body').innerHTML='<div class="empty">Error: '+e.message+'</div>';});
 }
+
+
 
 function loadSalesNames() {
   if (allSales.length) return;
@@ -3333,28 +3380,7 @@ function closeCustDetail() {
 }
 
 
-function returnSale(id) {
-  var sale = allSales.find(function(s) { return s.id === id; });
-  if (!sale) return;
-  var itemList = (sale.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
-  if (!confirm('Process return for ' + sale.customer_name + '?\n' + itemList + '\nTotal: ' + fmt(sale.total) + '\n\nThis will restore stock and mark sale as returned.')) return;
-  // Restore inventory stock
-  var ps = (sale.items || []).map(function(i) {
-    var it = inv.find(function(iv) { return iv.id === i.id; });
-    if (!it) return Promise.resolve();
-    var nr = it.remaining + i.qty;
-    return dbPatch('inventory', {remaining: nr}, '?id=eq.' + i.id).then(function() { it.remaining = nr; });
-  });
-  // Mark sale as returned (zero out paid, set balance to 0, add note)
-  ps.push(dbPatch('sales', {paid: 0, balance: 0, method: 'Returned', customer_name: sale.customer_name + ' [RETURNED]'}, '?id=eq.' + id));
-  Promise.all(ps).then(function() {
-    toast('Return processed — stock restored', 'ok');
-    allSales = []; allCustomerSales = [];
-    loadHist(); checkLow();
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
 
-function loadDebt() { loadCustomers(); }
 
 function selDM(el, key, m) {
   el.closest('.mg').querySelectorAll('.mb').forEach(function(b) { b.classList.remove('sel'); });
