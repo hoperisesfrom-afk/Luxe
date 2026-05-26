@@ -1561,7 +1561,7 @@ function completeSale() {
   loading('sale-btn', true);
   var items = cart.map(function(c) { return {id: c.id, name: c.name, qty: c.qty, selling_price: c.sp, buying_price: c.bp}; });
   lastReceiptRef = genRef();
-  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef};
+  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0};
   if (splitDetails) saleData.split_details = splitDetails;
 
   dbPost('sales', saleData)
@@ -1649,6 +1649,11 @@ function loadHist() {
   histPage = 0;
   allSales = [];
   document.getElementById('hist-list').innerHTML = '<div class="empty">Loading...</div>';
+  // Wait for auth token if not yet available
+  if (!authToken) {
+    setTimeout(loadHist, 300);
+    return;
+  }
   fetchHistPage(true);
 }
 
@@ -2632,7 +2637,8 @@ function reshareReceipt(id) {
     ref: lastReceiptRef, cust: sale.customer_name, date: sale.date,
     items: items, total: sale.total, paid: sale.paid,
     balance: sale.balance, method: sale.method,
-    splitDetails: sale.split_details || null, discount: 0,
+    splitDetails: sale.split_details || null,
+    discount: sale.discount_amount || 0,
     payLog: payLog
   };
   lastReceiptText = '=== LIZ LUXE ===\n' + lastReceiptRef + '\nCustomer: ' + sale.customer_name + '\n' + sale.date;
@@ -3047,7 +3053,7 @@ function completeSale() {
   loading('sale-btn', true);
   var items = cart.map(function(c) { return {id: c.id, name: c.name, qty: c.qty, selling_price: c.sp, buying_price: c.bp}; });
   lastReceiptRef = genRef();
-  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef};
+  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0};
   if (splitDetails) saleData.split_details = splitDetails;
 
   dbPost('sales', saleData)
