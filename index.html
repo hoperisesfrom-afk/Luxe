@@ -972,7 +972,7 @@ function showTab(name, btn) {
   if (btn) btn.classList.add('active');
   document.getElementById('content').scrollTop = 0;
   if (name === 'inventory') loadInv();
-  else if (name === 'sales') { loadInvQ(); initDate(); loadSalesNames(); }
+  else if (name === 'sales') { loadInvQ(); initDate(); if (!allCustNames.length) loadSalesNames(); }
   else if (name === 'history') loadHist();
   else if (name === 'debtors') loadCustomers();
   else if (name === 'finance') { loadTransfers(); renderFin(); }
@@ -1354,22 +1354,29 @@ function sharePL() {
   window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
+var allCustNames = [];
+
 function loadSalesNames() {
-  if (allSales.length) return;
-  dbGet('sales', '?select=customer_name&order=created_at.desc').then(function(d) { allSales = d; }).catch(function() {});
+  dbGet('sales', '?select=customer_name&order=created_at.desc&limit=500').then(function(d) {
+    var seen = {};
+    allCustNames = [];
+    d.forEach(function(s) {
+      var n = s.customer_name;
+      if (n && n !== 'Walk-in' && n.indexOf('[RETURNED]') < 0 && !seen[n]) {
+        seen[n] = 1; allCustNames.push(n);
+      }
+    });
+  }).catch(function() {});
 }
 
 function custSuggest() {
   var val = document.getElementById('sale-cust').value;
   var dd = document.getElementById('cust-dd');
-  if (!val || val.length < 2) { dd.style.display = 'none'; return; }
+  if (!val || val.length < 1) { dd.style.display = 'none'; return; }
   var q = val.toLowerCase();
-  var seen = {}, names = [];
-  allSales.forEach(function(s) {
-    var n = s.customer_name;
-    if (n && n !== 'Walk-in' && n.toLowerCase().indexOf(q) >= 0 && !seen[n]) { seen[n] = 1; names.push(n); }
-  });
-  names = names.slice(0, 5);
+  var names = allCustNames.filter(function(n) {
+    return n.toLowerCase().indexOf(q) >= 0;
+  }).slice(0, 6);
   if (!names.length) { dd.style.display = 'none'; return; }
   var html = '';
   names.forEach(function(n) { html += '<div class="cust-opt">' + n + '</div>'; });
@@ -1649,9 +1656,8 @@ function loadHist() {
   histPage = 0;
   allSales = [];
   document.getElementById('hist-list').innerHTML = '<div class="empty">Loading...</div>';
-  // Wait for auth token if not yet available
   if (!authToken) {
-    setTimeout(loadHist, 300);
+    setTimeout(loadHist, 500);
     return;
   }
   fetchHistPage(true);
@@ -2845,36 +2851,6 @@ function loadLedgerData(allTime) {
 }
 
 
-
-function loadSalesNames() {
-  if (allSales.length) return;
-  dbGet('sales', '?select=customer_name&order=created_at.desc').then(function(d) { allSales = d; }).catch(function() {});
-}
-
-function custSuggest() {
-  var val = document.getElementById('sale-cust').value;
-  var dd = document.getElementById('cust-dd');
-  if (!val || val.length < 2) { dd.style.display = 'none'; return; }
-  var q = val.toLowerCase();
-  var seen = {}, names = [];
-  allSales.forEach(function(s) {
-    var n = s.customer_name;
-    if (n && n !== 'Walk-in' && n.toLowerCase().indexOf(q) >= 0 && !seen[n]) { seen[n] = 1; names.push(n); }
-  });
-  names = names.slice(0, 5);
-  if (!names.length) { dd.style.display = 'none'; return; }
-  var html = '';
-  names.forEach(function(n) { html += '<div class="cust-opt">' + n + '</div>'; });
-  dd.innerHTML = html;
-  dd.querySelectorAll('.cust-opt').forEach(function(el) {
-    el.addEventListener('click', function() {
-      document.getElementById('sale-cust').value = el.textContent;
-      dd.style.display = 'none';
-    });
-  });
-  dd.style.display = 'block';
-}
-
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.iswrap')) document.getElementById('idd').style.display = 'none';
   if (!e.target.closest('#sale-cust') && !e.target.closest('#cust-dd')) document.getElementById('cust-dd').style.display = 'none';
@@ -3827,6 +3803,8 @@ function unlockApp() {
   document.getElementById('app-lock').classList.add('hidden');
   resetLockTimer();
   loadInv();
+  // Preload customer names for autocomplete immediately
+  setTimeout(loadSalesNames, 800);
   // Daily summary toast on first unlock of the day
   var lastUnlock = localStorage.getItem('llLastUnlock') || '';
   var today = new Date().toISOString().slice(0, 10);
