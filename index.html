@@ -950,6 +950,10 @@ function genRef() {
 }
 function fmt(n) { return 'KES ' + Math.round(n || 0).toLocaleString(); }
 
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function toast(msg, type) {
   var el = document.getElementById('toast');
   el.textContent = msg;
@@ -1395,218 +1399,17 @@ document.addEventListener('click', function(e) {
   if (!e.target.closest('#sale-cust') && !e.target.closest('#cust-dd')) document.getElementById('cust-dd').style.display = 'none';
 });
 
-function searchItems(val) {
-  var dd = document.getElementById('idd');
-  if (!val.trim()) { dd.style.display = 'none'; return; }
-  var m = inv.filter(function(i) { return i.name.toLowerCase().indexOf(val.toLowerCase()) >= 0 && i.remaining > 0; });
-  if (!m.length) { dd.innerHTML = '<div class="iopt" style="color:var(--t2)">Nothing in stock</div>'; dd.style.display = 'block'; return; }
-  var html = '';
-  m.forEach(function(i) {
-    html += '<div class="iopt" onclick="addToCart(' + i.id + ')">';
-    html += '<div class="iopt-name">' + i.name + '</div>';
-    html += '<div class="iopt-meta">' + fmt(i.selling_price) + ' &middot; ' + i.remaining + ' left</div></div>';
-  });
-  dd.innerHTML = html; dd.style.display = 'block';
-}
 
-function addToCart(id) {
-  var item = inv.find(function(i) { return i.id === id; }); if (!item) return;
-  var ex = cart.find(function(c) { return c.id === id; });
-  if (ex) { if (ex.qty < item.remaining) ex.qty++; else { toast('Max stock reached', 'err'); return; } }
-  else cart.push({id: item.id, name: item.name, sp: item.selling_price, bp: item.buying_price, qty: 1, max: item.remaining});
-  document.getElementById('item-search').value = '';
-  document.getElementById('idd').style.display = 'none';
-  renderCart(); updateFloat();
-}
 
-function chQty(id, d) {
-  var c = cart.find(function(i) { return i.id === id; }); if (!c) return;
-  c.qty = Math.max(1, Math.min(c.max, c.qty + d));
-  renderCart(); updateFloat();
-}
 
-function rmCart(id) { cart = cart.filter(function(i) { return i.id !== id; }); renderCart(); updateFloat(); }
 
-function renderCart() {
-  var ci = document.getElementById('cart-items'), ce = document.getElementById('cart-empty');
-  var ccBtn = document.getElementById('clear-cart-btn');
-  if (!cart.length) { ci.style.display = 'none'; ce.style.display = 'block'; if (ccBtn) ccBtn.style.display = 'none'; renderSheet(); return; }
-  ce.style.display = 'none'; ci.style.display = 'block';
-  if (ccBtn) ccBtn.style.display = 'inline-block';
-  var html = '';
-  cart.forEach(function(c) {
-    html += '<div class="ci">';
-    html += '<div style="flex:1;"><div style="font-weight:700;font-size:14px;">' + c.name + '</div>';
-    html += '<div style="font-size:12px;color:var(--t2);">' + fmt(c.sp) + ' each</div></div>';
-    html += '<div class="qc">';
-    html += '<button class="qb" onclick="chQty(' + c.id + ',-1)">&#8722;</button>';
-    html += '<span style="font-size:16px;font-weight:800;min-width:28px;text-align:center;color:var(--gold)">' + c.qty + '</span>';
-    html += '<button class="qb" onclick="chQty(' + c.id + ',1)">+</button></div>';
-    html += '<div style="font-weight:800;min-width:72px;text-align:right;color:var(--gold)">' + fmt(c.sp * c.qty) + '</div>';
-    html += '<button class="btn bsm2 bd" onclick="rmCart(' + c.id + ')" style="margin-left:6px;padding:6px 8px;">&#10005;</button></div>';
-  });
-  ci.innerHTML = html;
-  document.getElementById('cart-dot').classList.toggle('on', cart.length > 0);
-  renderSheet();
-}
 
-function renderSheet() {
-  var sub = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
-  var total = Math.max(0, sub - discountAmt);
-  var html = '';
-  cart.forEach(function(c) {
-    html += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:14px;border-bottom:1px solid var(--b3)">';
-    html += '<span style="color:var(--t2)">' + c.qty + '&times; ' + c.name + '</span>';
-    html += '<span style="font-weight:700;">' + fmt(c.sp * c.qty) + '</span></div>';
-  });
-  document.getElementById('sheet-lines').innerHTML = html;
-  document.getElementById('s-sub').textContent = fmt(sub);
-  var dr = document.getElementById('s-disc-row');
-  if (discountAmt > 0) { dr.style.display = 'flex'; document.getElementById('s-disc-val').textContent = '-' + fmt(discountAmt); }
-  else { dr.style.display = 'none'; }
-  document.getElementById('s-tot').textContent = fmt(total);
-}
 
-function updateFloat() {
-  var total = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
-  var onSales = document.getElementById('tab-sales').classList.contains('active');
-  var btn = document.getElementById('float-btn');
-  if (cart.length > 0 && onSales) {
-    btn.classList.add('on');
-    document.getElementById('float-lbl').textContent = cart.length + ' item' + (cart.length > 1 ? 's' : '');
-    document.getElementById('float-tot').textContent = fmt(total);
-  } else btn.classList.remove('on');
-}
 
-function openSheet() { document.getElementById('s-overlay').classList.add('on'); document.getElementById('sheet').classList.add('on'); }
-function closeSheet() { document.getElementById('s-overlay').classList.remove('on'); document.getElementById('sheet').classList.remove('on'); }
 
-function selMethod(el, m) {
-  document.querySelectorAll('#method-grid .mb').forEach(function(b) { b.classList.remove('sel'); });
-  el.classList.add('sel'); payMethod = m;
-  var isCredit = m === 'Credit';
-  document.getElementById('paid-section').style.display = isCredit ? 'none' : 'block';
-  document.getElementById('split-toggle').style.display = isCredit ? 'none' : 'flex';
-  if (isCredit) { splitMode = false; document.getElementById('split-panel').classList.remove('on'); document.getElementById('split-toggle').classList.remove('on'); document.getElementById('split-toggle-icon').textContent = '+'; }
-  if (m === 'Credit') document.getElementById('change-line').style.display = 'none';
-  updateChange();
-}
 
-function toggleSplit() {
-  splitMode = !splitMode;
-  document.getElementById('split-panel').classList.toggle('on', splitMode);
-  document.getElementById('split-toggle').classList.toggle('on', splitMode);
-  document.getElementById('split-toggle-icon').textContent = splitMode ? '−' : '+';
-  document.getElementById('paid-section').style.display = splitMode ? 'none' : 'block';
-  if (splitMode) {
-    var total = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
-    document.getElementById('sp-cash').value = '';
-    document.getElementById('sp-mpesa').value = '';
-    document.getElementById('sp-card').value = '';
-    document.getElementById('sp-cash').placeholder = total;
-    updateSplitChange();
-  }
-}
 
-function updateSplitChange() {
-  var total = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
-  var cash = parseFloat(document.getElementById('sp-cash').value) || 0;
-  var mpesa = parseFloat(document.getElementById('sp-mpesa').value) || 0;
-  var card = parseFloat(document.getElementById('sp-card').value) || 0;
-  var paid = cash + mpesa + card;
-  var cl = document.getElementById('split-change-line');
-  var lbl = document.getElementById('split-change-lbl');
-  if (paid > 0) {
-    cl.style.display = 'block';
-    var diff = paid - total;
-    if (Math.abs(diff) < 1) { cl.style.background = 'var(--ok-bg)'; lbl.style.color = 'var(--ok)'; lbl.textContent = '✓ Exact amount — ready to complete'; }
-    else if (diff > 0) { cl.style.background = 'var(--ok-bg)'; lbl.style.color = 'var(--ok)'; lbl.textContent = 'Change: ' + fmt(diff); }
-    else { cl.style.background = 'var(--err-bg)'; lbl.style.color = 'var(--err)'; lbl.textContent = 'Still needs: ' + fmt(Math.abs(diff)); }
-  } else cl.style.display = 'none';
-}
 
-function updateChange() {
-  var total = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
-  var paid = parseFloat(document.getElementById('sale-paid').value) || 0;
-  var cl = document.getElementById('change-line');
-  if (paid > 0 && payMethod !== 'Credit') {
-    cl.style.display = 'block'; var diff = paid - total; var lbl = document.getElementById('change-lbl');
-    if (diff >= 0) { cl.style.background = 'var(--ok-bg)'; lbl.style.color = 'var(--ok)'; lbl.textContent = 'Change: ' + fmt(diff); }
-    else { cl.style.background = 'var(--err-bg)'; lbl.style.color = 'var(--err)'; lbl.textContent = 'Still owes: ' + fmt(Math.abs(diff)); }
-  } else cl.style.display = 'none';
-}
-
-function completeSale() {
-  if (!cart.length) { toast('Add at least one item', 'err'); return; }
-  var cust = document.getElementById('sale-cust').value.trim() || 'Walk-in';
-  var date = document.getElementById('sale-date').value || new Date().toISOString().slice(0, 10);
-  var total = Math.max(0, cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0) - discountAmt);
-  var paid, method, splitDetails = null;
-  if (splitMode) {
-    var cash = parseFloat(document.getElementById('sp-cash').value) || 0;
-    var mpesa = parseFloat(document.getElementById('sp-mpesa').value) || 0;
-    var card = parseFloat(document.getElementById('sp-card').value) || 0;
-    paid = cash + mpesa + card;
-    if (paid <= 0) { toast('Enter split amounts', 'err'); return; }
-    paid = Math.min(paid, total);
-    var parts = [];
-    if (cash > 0) parts.push('Cash ' + fmt(cash));
-    if (mpesa > 0) parts.push('M-Pesa ' + fmt(mpesa));
-    if (card > 0) parts.push('Card ' + fmt(card));
-    method = 'Split';
-    splitDetails = parts.join(' + ');
-  } else if (payMethod === 'Credit') {
-    paid = 0; method = 'Credit';
-  } else {
-    paid = parseFloat(document.getElementById('sale-paid').value);
-    if (isNaN(paid)) { toast('Enter amount paid', 'err'); return; }
-    paid = Math.min(paid, total);
-    method = payMethod;
-  }
-
-  var balance = total - paid;
-  loading('sale-btn', true);
-  var items = cart.map(function(c) { return {id: c.id, name: c.name, qty: c.qty, selling_price: c.sp, buying_price: c.bp}; });
-  lastReceiptRef = genRef();
-  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0};
-  if (splitDetails) saleData.split_details = splitDetails;
-
-  dbPost('sales', saleData)
-    .then(function() {
-      var ps = cart.map(function(c) {
-        var it = inv.find(function(i) { return i.id === c.id; });
-        if (!it) return Promise.resolve();
-        var nr = Math.max(0, it.remaining - c.qty);
-        return dbPatch('inventory', {remaining: nr}, '?id=eq.' + c.id).then(function() { it.remaining = nr; });
-      });
-      return Promise.all(ps);
-    })
-    .then(function() {
-      showReceipt(cust, date, items, total, paid, balance, method, splitDetails);
-      cart = []; allSales = [];
-      document.getElementById('sale-cust').value = '';
-      document.getElementById('sale-paid').value = '';
-      document.getElementById('sp-cash').value = '';
-      document.getElementById('sp-mpesa').value = '';
-      document.getElementById('sp-card').value = '';
-      splitMode = false;
-      discountAmt = 0;
-      document.getElementById('disc-amt').value = '';
-      document.getElementById('split-panel').classList.remove('on');
-      document.getElementById('split-toggle').classList.remove('on');
-      document.getElementById('split-toggle-icon').textContent = '+';
-      document.getElementById('paid-section').style.display = 'block';
-      document.querySelectorAll('#method-grid .mb').forEach(function(b) { b.classList.remove('sel'); });
-      document.querySelector('#method-grid .mb').classList.add('sel');
-      payMethod = 'Cash';
-      document.getElementById('change-line').style.display = 'none';
-      renderCart(); updateFloat(); closeSheet();
-      document.getElementById('cart-dot').classList.remove('on');
-      checkLow();
-    })
-    .catch(function(e) { toast('Error: ' + e.message, 'err'); })
-    .finally(function() { loading('sale-btn', false, 'Complete Sale'); });
-}
 
 function showReceipt(cust, date, items, total, paid, balance, m, splitDetails) {
   // lastReceiptRef already set in completeSale
@@ -1685,11 +1488,6 @@ function fetchHistPage(reset) {
   }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
 }
 
-function filterHist() {
-  histPage = 0; allSales = [];
-  document.getElementById('hist-list').innerHTML = '<div class="empty">Loading...</div>';
-  fetchHistPage(true);
-}
 
 function renderHistList(reset) {
   var q = (document.getElementById('hist-search').value || '').toLowerCase();
@@ -1747,248 +1545,22 @@ function loadMoreHist() {
   fetchHistPage(false);
 }
 
-function toggleEditSale(id) {
-  var p = document.getElementById('esp-' + id);
-  p.classList.toggle('on');
-}
 
-function saveEditSale(id) {
-  var name = document.getElementById('esn-' + id).value.trim();
-  var date = document.getElementById('esd-' + id).value;
-  if (!name || !date) { toast('Fill in name and date', 'err'); return; }
-  dbPatch('sales', {customer_name: name, date: date}, '?id=eq.' + id)
-    .then(function() {
-      toast('Sale updated', 'ok');
-      allSales = []; loadHist();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
 
-function deleteSale(id) {
-  if (!confirm('Delete this sale? This cannot be undone.')) return;
-  dbDel('sales', '?id=eq.' + id)
-    .then(function() {
-      toast('Sale deleted', 'ok');
-      allSales = []; loadHist();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
 
 // ── Customers Tab ──
 var allCustomerSales = [];
 var custFilterMode = 'all';
 
-function loadCustomers() {
-  var el = document.getElementById('cust-list');
-  el.innerHTML = skelHtml();
-  dbGet('sales', '?order=customer_name.asc').then(function(sales) {
-    allCustomerSales = sales;
-    document.getElementById('debt-dot').classList.toggle('on', sales.some(function(s) { return s.balance > 0; }));
-    filterCustomers();
-  }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
-}
 
-function setCustFilter(btn, mode) {
-  document.querySelectorAll('#tab-debtors .dpill').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  custFilterMode = mode;
-  filterCustomers();
-}
 
-function filterCustomers() {
-  var q = (document.getElementById('cust-search').value || '').toLowerCase();
-  var map = {};
-  allCustomerSales.forEach(function(s) {
-    var n = s.customer_name || 'Walk-in';
-    if (!map[n]) map[n] = {sales: [], totalSpent: 0, balance: 0, lastDate: ''};
-    map[n].sales.push(s);
-    map[n].totalSpent += s.total || 0;
-    map[n].balance += s.balance || 0;
-    if (!map[n].lastDate || s.date > map[n].lastDate) map[n].lastDate = s.date;
-  });
-  var keys = Object.keys(map).filter(function(n) {
-    var matchQ = !q || n.toLowerCase().indexOf(q) >= 0;
-    var matchF = custFilterMode === 'all' || (custFilterMode === 'debt' && map[n].balance > 0);
-    return matchQ && matchF;
-  }).sort(function(a, b) { return map[b].totalSpent - map[a].totalSpent; });
-  var el = document.getElementById('cust-list');
-  if (!keys.length) { el.innerHTML = '<div class="empty">No customers found</div>'; return; }
-  // Store map on window for onclick access
-  window._custMap = map;
-  var html = '';
-  keys.forEach(function(name, idx) {
-    var c = map[name];
-    var initial = name.charAt(0).toUpperCase();
-    var hasDebt = c.balance > 0;
-    var safeName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    html += '<div class="cust-card" onclick="openCustDetail(\'' + safeName + '\')">';
-    html += '<div style="display:flex;align-items:center;gap:12px;">';
-    html += '<div class="cust-avatar">' + initial + '</div>';
-    html += '<div style="flex:1;">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap;">';
-    html += '<span style="font-weight:700;font-size:15px;">' + name + '</span>';
-    if (hasDebt) html += '<span class="debt-badge">Owes ' + fmt(c.balance) + '</span>';
-    html += '</div>';
-    html += '<div style="font-size:12px;color:var(--t2);">' + c.sales.length + ' purchase' + (c.sales.length !== 1 ? 's' : '') + ' &middot; Last: ' + (c.lastDate || '—') + '</div>';
-    html += '</div>';
-    html += '<div style="text-align:right;flex-shrink:0;"><div style="font-size:15px;font-weight:800;color:var(--gold);">' + fmt(c.totalSpent) + '</div>';
-    html += '<div style="font-size:10px;color:var(--t2);">total spent</div></div>';
-    html += '</div></div>';
-  });
-  el.innerHTML = html;
-}
 
 var _cdSales = [], _cdPayMethod = 'Cash';
 
-function openCustDetail(name) {
-  _cdSales = allCustomerSales.filter(function(s) { return s.customer_name === name; })
-    .sort(function(a, b) { return b.date.localeCompare(a.date); });
-  var orderTotal = _cdSales.reduce(function(s, x) { return s + (x.total || 0); }, 0);
-  var totalPaid  = _cdSales.reduce(function(s, x) { return s + (x.paid  || 0); }, 0);
-  var balance    = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
-  var lastDate   = _cdSales.length ? _cdSales[0].date : '—';
 
-  document.getElementById('cd-avatar').textContent = name.charAt(0).toUpperCase();
-  document.getElementById('cd-name').textContent = name;
-  document.getElementById('cd-meta').textContent = _cdSales.length + ' purchase' + (_cdSales.length !== 1 ? 's' : '');
-  document.getElementById('cd-total').textContent = fmt(orderTotal);
-  document.getElementById('cd-visits').textContent = _cdSales.length;
-  var balEl = document.getElementById('cd-balance');
-  balEl.textContent = fmt(balance);
-  balEl.style.color = balance > 0 ? 'var(--err)' : 'var(--ok)';
-  document.getElementById('cd-last').textContent = lastDate;
 
-  // ── Payment log (history of partial payments) ──
-  var plEl = document.getElementById('cd-payment-log');
-  if (_cdSales.some(function(s) { return s.payment_log && s.payment_log.length; })) {
-    var logs = [];
-    _cdSales.forEach(function(s) {
-      (s.payment_log || []).forEach(function(p) { logs.push(p); });
-    });
-    logs.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
-    var lhtml = '<div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:8px;">Payment History</div>';
-    lhtml += '<div class="payment-log">';
-    logs.forEach(function(p) {
-      lhtml += '<div class="plog-row"><div><span style="font-weight:600;">' + fmt(p.amount) + '</span> <span class="chip" style="font-size:10px;">' + p.method + '</span></div><span style="color:var(--t2);">' + p.date + '</span></div>';
-    });
-    lhtml += '</div>';
-    plEl.innerHTML = lhtml;
-    plEl.style.display = 'block';
-  } else { plEl.style.display = 'none'; }
 
-  // ── Debt actions ──
-  var da = document.getElementById('cd-debt-actions');
-  if (balance > 0) {
-    var debtSaleIds = _cdSales.filter(function(s) { return (s.balance || 0) > 0; }).map(function(s) { return s.id; });
-    _cdPayMethod = 'Cash';
-    da.style.display = 'block';
-    da.innerHTML =
-      '<div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--rs);padding:14px;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
-          '<div style="font-size:12px;color:var(--err);font-weight:700;">&#9888; Outstanding: ' + fmt(balance) + '</div>' +
-          '<button class="btn bsm bok-btn" style="width:auto;padding:6px 12px;" onclick="cdMarkFullyPaid()">&#10003; All Paid</button>' +
-        '</div>' +
-        '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">Record a payment:</div>' +
-        '<input id="cd-pay-amt" type="number" placeholder="Amount (KES)" style="margin-bottom:10px;">' +
-        '<div class="pay-method-grid">' +
-          '<div class="pmt-btn sel" onclick="cdSelMethod(this,\'Cash\')">Cash</div>' +
-          '<div class="pmt-btn" onclick="cdSelMethod(this,\'M-Pesa\')">M-Pesa</div>' +
-          '<div class="pmt-btn" onclick="cdSelMethod(this,\'Card\')">Card</div>' +
-        '</div>' +
-        '<button class="btn bp bsm" id="cd-pay-btn" onclick="cdRecordPayment()">Record Payment</button>' +
-      '</div>';
-    // store ids for payment
-    da._saleIds = debtSaleIds;
-  } else {
-    da.style.display = 'none';
-    da.innerHTML = '';
-  }
 
-  // ── Purchase history ──
-  var html = '';
-  _cdSales.forEach(function(s) {
-    var its = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
-    html += '<div class="sale-card" style="margin-bottom:8px;">';
-    html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
-    html += '<span style="font-size:12px;color:var(--t2);">' + s.date + '</span>';
-    html += '<span style="font-weight:800;color:var(--gold);">' + fmt(s.total) + '</span></div>';
-    html += '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">' + its + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-    html += '<span class="chip">' + s.method + '</span>';
-    html += '<span style="font-size:12px;font-weight:700;color:' + (s.balance > 0 ? 'var(--err)' : 'var(--ok)') + ';">' +
-      (s.balance > 0 ? 'Owes ' + fmt(s.balance) : '&#10003; Paid') + '</span>';
-    html += '</div></div>';
-  });
-  document.getElementById('cd-history').innerHTML = html || '<div class="empty">No purchases</div>';
-  document.getElementById('cust-detail-overlay').classList.add('on');
-}
-
-function cdSelMethod(el, m) {
-  el.closest('.pay-method-grid').querySelectorAll('.pmt-btn').forEach(function(b) { b.classList.remove('sel'); });
-  el.classList.add('sel');
-  _cdPayMethod = m;
-}
-
-function cdRecordPayment() {
-  var amt = parseFloat(document.getElementById('cd-pay-amt').value);
-  if (isNaN(amt) || amt <= 0) { toast('Enter a valid amount', 'err'); return; }
-  var da = document.getElementById('cd-debt-actions');
-  var ids = da._saleIds || [];
-  if (!ids.length) return;
-  var btn = document.getElementById('cd-pay-btn');
-  btn.disabled = true; btn.textContent = 'Saving...';
-  var today = new Date().toISOString().slice(0, 10);
-  var method = _cdPayMethod;
-  var custName = document.getElementById('cd-name').textContent;
-  var prevBalance = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
-  dbGet('sales', '?id=in.(' + ids.join(',') + ')&order=date.asc').then(function(sales) {
-    var rem = amt, ps = [];
-    sales.forEach(function(s) {
-      if (rem <= 0 || (s.balance || 0) <= 0) return;
-      var pay = Math.min(rem, s.balance);
-      var newPaid = (s.paid || 0) + pay;
-      var newBal  = Math.round((s.balance - pay) * 100) / 100;
-      var log = s.payment_log || [];
-      log.push({amount: pay, method: method, date: today});
-      ps.push(dbPatch('sales', {paid: newPaid, balance: newBal, payment_log: log}, '?id=eq.' + s.id));
-      rem -= pay;
-    });
-    return Promise.all(ps);
-  }).then(function() {
-    var newBalance = Math.max(0, prevBalance - amt);
-    allCustomerSales = [];
-    loadCustomers();
-    closeCustDetail();
-    showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false);
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
-  .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
-}
-
-function cdMarkFullyPaid() {
-  var da = document.getElementById('cd-debt-actions');
-  var ids = da._saleIds || [];
-  var custName = document.getElementById('cd-name').textContent;
-  var balance = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
-  if (!confirm('Mark ' + custName + ' as fully paid?\nTotal cleared: ' + fmt(balance))) return;
-  // Ask for method
-  var method = 'Cash';
-  var pick = prompt('Payment method? Type: Cash, M-Pesa, or Card', 'Cash');
-  if (pick) method = pick.trim();
-  var today = new Date().toISOString().slice(0, 10);
-  dbGet('sales', '?id=in.(' + ids.join(',') + ')').then(function(sales) {
-    var ps = sales.map(function(s) {
-      var log = s.payment_log || [];
-      if (s.balance > 0) log.push({amount: s.balance, method: method, date: today});
-      return dbPatch('sales', {paid: s.total, balance: 0, payment_log: log}, '?id=eq.' + s.id);
-    });
-    return Promise.all(ps);
-  }).then(function() {
-    allCustomerSales = []; loadCustomers(); closeCustDetail();
-    showDebtReceipt(custName, balance, method, balance, 0, today, true);
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
-
-function closeCustDetail() {
-  document.getElementById('cust-detail-overlay').classList.remove('on');
-}
 
 function showDebtReceipt(custName, amtPaid, method, prevBal, newBal, date, fullyClear) {
   var custSales = allCustomerSales.filter(function(s) {
@@ -2127,39 +1699,7 @@ function returnSale(id) {
 }
 
 
-function selDM(el, key, m) {
-  el.closest('.mg').querySelectorAll('.mb').forEach(function(b) { b.classList.remove('sel'); });
-  el.classList.add('sel'); dMethods[key] = m;
-}
-function togglePP(key) { var p = document.getElementById('pp-' + key); p.style.display = p.style.display === 'block' ? 'none' : 'block'; }
 
-function payDebt(key, idsStr) {
-  var amt = parseFloat(document.getElementById('pa-' + key).value);
-  if (isNaN(amt) || amt <= 0) { toast('Enter a valid amount', 'err'); return; }
-  var m = dMethods[key] || 'Cash';
-  var ids = idsStr.split(',').map(Number).filter(Boolean);
-  loading('pb-' + key, true);
-  dbGet('sales', '?id=in.(' + ids.join(',') + ')&order=created_at.asc').then(function(sales) {
-    var rem = amt, ps = [];
-    sales.forEach(function(s) {
-      if (rem <= 0 || (s.balance || 0) <= 0) return;
-      var pay = Math.min(rem, s.balance);
-      ps.push(dbPatch('sales', {paid: (s.paid || 0) + pay, balance: s.balance - pay}, '?id=eq.' + s.id));
-      rem -= pay;
-    });
-    return Promise.all(ps);
-  }).then(function() {
-    toast('Payment of ' + fmt(amt) + ' via ' + m + ' recorded', 'ok'); loadDebt();
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
-  .finally(function() { loading('pb-' + key, false, 'Record Payment'); });
-}
-
-function setFinFilter(btn, f) {
-  document.querySelectorAll('.fin-date-pills .dpill').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  finDateFilter = f;
-  renderFin();
-}
 
 function showFinTab(name, btn) {
   ['overview','transactions','reports'].forEach(function(t) {
@@ -2173,199 +1713,10 @@ function showFinTab(name, btn) {
   btn.style.color = '#0a0a0a';
 }
 
-function renderFin() {
-  if (!finOpen) {
-    document.getElementById('fin-pin').style.display = 'block';
-    document.getElementById('fin-content').style.display = 'none';
-    var hint = document.getElementById('fin-pin-hint');
-    if (hint) hint.textContent = (typeof appPin !== 'undefined' && appPin === '1234') ? 'Default PIN: 1234 — please change it' : 'Enter your PIN';
-    return;
-  }
-  document.getElementById('fin-pin').style.display = 'none';
-  document.getElementById('fin-content').style.display = 'block';
-  var today = new Date().toISOString().slice(0, 10);
-  Promise.all([dbGet('sales', '?select=paid,items,balance,date,method,payment_log,split_details'), dbGet('deductions', '?order=created_at.desc')])
-    .then(function(r) {
-      var allSalesData = r[0], deds = r[1];
-      // Daily summary always uses today
-      var todaySales = allSalesData.filter(function(s) { return s.date === today; });
-      var dayRev = todaySales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
-      var dayCogs = todaySales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
-      document.getElementById('fd-rev').textContent = fmt(dayRev);
-      document.getElementById('fd-pro').textContent = fmt(dayRev - dayCogs);
-      document.getElementById('fd-cnt').textContent = todaySales.length;
-      // Apply date filter
-      var now = new Date();
-      var sales = allSalesData.filter(function(s) {
-        if (finDateFilter === 'all') return true;
-        if (finDateFilter === 'today') return s.date === today;
-        if (finDateFilter === 'week') {
-          var day = now.getDay();
-          var mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-          return s.date >= mon.toISOString().slice(0, 10) && s.date <= today;
-        }
-        if (finDateFilter === 'month') {
-          var from = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01';
-          return s.date >= from && s.date <= today;
-        }
-        return true;
-      });
-      var rev = sales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
-      var cogs = sales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
-      var pro = rev - cogs;
-      var totExp = deds.filter(function(d) { return d.type !== 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
-      var totInj = deds.filter(function(d) { return d.type === 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
-      // Net Balance = Cash in hand - what you spent + capital added
-      // i.e. Total Collected - Expenses + Capital Injected
-      var bal = rev - totExp + totInj;
-      document.getElementById('f-rev').textContent = fmt(rev);
-      document.getElementById('f-pro').textContent = fmt(pro);
-      document.getElementById('f-inj').textContent = fmt(totInj);
-      var fb = document.getElementById('f-bal'); fb.textContent = fmt(bal); fb.style.color = bal >= 0 ? 'var(--ok)' : 'var(--err)';
 
-      // ── Money breakdown by method + wallet adjustments ──
-      var mbCash = 0, mbMpesa = 0, mbCard = 0, mbCredit = 0, mbSplit = 0, mbBank = 0;
-      sales.forEach(function(s) {
-        var p = s.paid || 0;
-        var m = (s.method || '').toLowerCase();
-        if (m === 'cash') mbCash += p;
-        else if (m === 'm-pesa' || m === 'mpesa') mbMpesa += p;
-        else if (m === 'card') mbCard += p;
-        else if (m === 'credit') mbCredit += (s.balance || 0);
-        else if (m === 'bank') mbBank += p;
-        else if (m === 'split') {
-          // Parse split_details to distribute correctly e.g. "Cash KES 200 + M-Pesa KES 300"
-          var sd = s.split_details || '';
-          var cashM = sd.match(/Cash[^+]*?(\d[\d,]*)/i);
-          var mpesaM = sd.match(/M-Pesa[^+]*?(\d[\d,]*)/i);
-          var cardM = sd.match(/Card[^+]*?(\d[\d,]*)/i);
-          if (cashM) mbCash += parseFloat(cashM[1].replace(/,/g,''));
-          if (mpesaM) mbMpesa += parseFloat(mpesaM[1].replace(/,/g,''));
-          if (cardM) mbCard += parseFloat(cardM[1].replace(/,/g,''));
-          // If we couldn't parse, fall back to split bucket
-          if (!cashM && !mpesaM && !cardM) mbSplit += p;
-        }
-      });
-      // Add partial payments from payment_log
-      sales.forEach(function(s) {
-        (s.payment_log || []).forEach(function(pl) {
-          var pm = (pl.method || '').toLowerCase();
-          if (pm === 'cash') mbCash += (pl.amount || 0);
-          else if (pm === 'm-pesa' || pm === 'mpesa') mbMpesa += (pl.amount || 0);
-          else if (pm === 'card') mbCard += (pl.amount || 0);
-          else if (pm === 'bank') mbBank += (pl.amount || 0);
-        });
-      });
-      // Apply wallet transfer adjustments only
-      var adj = getWalletAdjustments();
-      mbCash += adj['Cash'] || 0;
-      mbMpesa += adj['M-Pesa'] || 0;
-      mbBank += adj['Bank'] || 0;
-      var mbTotal = mbCash + mbMpesa + mbCard + mbSplit + mbBank;
-      document.getElementById('mb-cash').textContent = fmt(Math.max(0, mbCash));
-      document.getElementById('mb-mpesa').textContent = fmt(Math.max(0, mbMpesa));
-      document.getElementById('mb-card').textContent = fmt(Math.max(0, mbCard));
-      document.getElementById('mb-credit').textContent = fmt(mbCredit);
-      document.getElementById('mb-split').textContent = fmt(Math.max(0, mbSplit));
-      document.getElementById('mb-bank').textContent = fmt(Math.max(0, mbBank));
-      document.getElementById('mb-total').textContent = fmt(mbTotal);
-      // Render transfer log
-      renderTransferLog();
-      var lg = document.getElementById('fin-log');
-      if (!deds.length) { lg.innerHTML = '<div class="empty">No transactions yet</div>'; return; }
-      var html = '';
-      deds.forEach(function(d) {
-        var isInj = d.type === 'injection';
-        html += '<div class="dr"><div>';
-        html += '<div style="font-size:13px;font-weight:600;">' + d.reason + '</div>';
-        html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">' + (d.category || 'Injection') + ' &middot; ' + d.date + '</div>';
-        html += '</div><div style="font-weight:800;color:' + (isInj ? 'var(--ok)' : 'var(--err)') + ';">' + (isInj ? '+' : '-') + fmt(d.amount) + '</div></div>';
-      });
-      lg.innerHTML = html;
-    }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
-}
 
-function addDeduction() {
-  var amt = parseFloat(document.getElementById('ded-amt').value);
-  var rsn = document.getElementById('ded-rsn').value.trim();
-  var cat = document.getElementById('ded-cat').value;
-  var wallet = document.getElementById('ded-wallet').value;
-  if (isNaN(amt) || amt <= 0 || !rsn) { toast('Fill in amount and reason', 'err'); return; }
-  loading('ded-btn', true);
-  dbPost('deductions', {amount: amt, reason: rsn, category: cat, type: 'expense', wallet: wallet, date: new Date().toISOString().slice(0, 10)})
-    .then(function() {
-      document.getElementById('ded-amt').value = ''; document.getElementById('ded-rsn').value = '';
-      toast('Expense recorded', 'ok'); renderFin();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
-    .finally(function() { loading('ded-btn', false, 'Record Expense'); });
-}
 
-function addInjection() {
-  var amt = parseFloat(document.getElementById('inj-amt').value);
-  var rsn = document.getElementById('inj-rsn').value.trim();
-  if (isNaN(amt) || amt <= 0 || !rsn) { toast('Fill in amount and reason', 'err'); return; }
-  loading('inj-btn', true);
-  dbPost('deductions', {amount: amt, reason: rsn, category: 'Capital injection', type: 'injection', date: new Date().toISOString().slice(0, 10)})
-    .then(function() {
-      document.getElementById('inj-amt').value = ''; document.getElementById('inj-rsn').value = '';
-      toast('Capital injected', 'ok'); renderFin();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
-    .finally(function() { loading('inj-btn', false, 'Inject Capital'); });
-}
 
-function exportCSV() {
-  toast('Preparing export...', 'ok');
-  dbGet('sales', '?order=date.desc').then(function(sales) {
-    if (!sales.length) { toast('No sales to export', 'err'); return; }
-    var rows = [['Receipt Ref','Date','Customer','Items','Total','Paid','Balance','Method','Split Details']];
-    sales.forEach(function(s) {
-      var itemStr = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(' | ');
-      rows.push([
-        s.receipt_ref || '',
-        s.date || '',
-        s.customer_name || '',
-        itemStr,
-        s.total || 0,
-        s.paid || 0,
-        s.balance || 0,
-        s.method || '',
-        s.split_details || ''
-      ]);
-    });
-    var csv = rows.map(function(r) {
-      return r.map(function(v) {
-        var val = String(v).replace(/"/g, '""');
-        return val.indexOf(',') >= 0 || val.indexOf('"') >= 0 || val.indexOf('\n') >= 0 ? '"' + val + '"' : val;
-      }).join(',');
-    }).join('\n');
-    var blob = new Blob(['\uFEFF' + csv], {type: 'text/csv;charset=utf-8;'}); // BOM for Excel
-    var url = URL.createObjectURL(blob);
-    var today = new Date().toISOString().slice(0, 10);
-    var a = document.createElement('a');
-    a.href = url; a.download = 'LizLuxe-Sales-' + today + '.csv';
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('Exported ' + sales.length + ' sales', 'ok');
-  }).catch(function(e) { toast('Export failed: ' + e.message, 'err'); });
-}
-
-function recordTransfer() {
-  var from = document.getElementById('wt-from').value;
-  var to = document.getElementById('wt-to').value;
-  var amt = parseFloat(document.getElementById('wt-amt').value);
-  var note = document.getElementById('wt-note').value.trim();
-  if (from === to) { toast('From and To must be different', 'err'); return; }
-  if (isNaN(amt) || amt <= 0) { toast('Enter a valid amount', 'err'); return; }
-  var today = new Date().toISOString().slice(0, 10);
-  dbPost('transfers', {from_wallet: from, to_wallet: to, amount: amt, note: note, date: today})
-    .then(function() {
-      document.getElementById('wt-amt').value = '';
-      document.getElementById('wt-note').value = '';
-      toast(fmt(amt) + ' moved from ' + from + ' to ' + to, 'ok');
-      loadTransfers();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
 
 var _transfers = [];
 
@@ -3195,7 +2546,7 @@ function filterCustomers() {
     html += '<div class="cust-avatar">' + initial + '</div>';
     html += '<div style="flex:1;">';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap;">';
-    html += '<span style="font-weight:700;font-size:15px;">' + name + '</span>';
+    html += '<span style="font-weight:700;font-size:15px;">' + escHtml(name) + '</span>';
     if (hasDebt) html += '<span class="debt-badge">Owes ' + fmt(c.balance) + '</span>';
     html += '</div>';
     html += '<div style="font-size:12px;color:var(--t2);">' + c.sales.length + ' purchase' + (c.sales.length !== 1 ? 's' : '') + ' &middot; Last: ' + (c.lastDate || '—') + '</div>';
@@ -3218,7 +2569,7 @@ function openCustDetail(name) {
   var lastDate   = _cdSales.length ? _cdSales[0].date : '—';
 
   document.getElementById('cd-avatar').textContent = name.charAt(0).toUpperCase();
-  document.getElementById('cd-name').textContent = name;
+  document.getElementById('cd-name').textContent = escHtml(name);
   document.getElementById('cd-meta').textContent = _cdSales.length + ' purchase' + (_cdSales.length !== 1 ? 's' : '');
   document.getElementById('cd-total').textContent = fmt(orderTotal);
   document.getElementById('cd-visits').textContent = _cdSales.length;
@@ -3805,6 +3156,12 @@ function unlockApp() {
   loadInv();
   // Preload customer names for autocomplete immediately
   setTimeout(loadSalesNames, 800);
+  // Warn if PIN still default
+  if (appPin === '1234') {
+    setTimeout(function() {
+      toast('⚠️ Default PIN 1234 is still set — please change it in Finance', 'err');
+    }, 1500);
+  }
   // Daily summary toast on first unlock of the day
   var lastUnlock = localStorage.getItem('llLastUnlock') || '';
   var today = new Date().toISOString().slice(0, 10);
