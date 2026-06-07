@@ -404,8 +404,8 @@ select option{background:#1c1c1c}
     <div id="tab-history" class="tab">
       <div class="g12"><input id="hist-search" placeholder="&#128269; Search customer, item or LX-XXXXX..." oninput="filterHist()" style="background:var(--s2);border:1px solid var(--b);"></div>
       <div class="date-pills">
-        <button class="dpill active" onclick="setDateFilter(this,'today')">Today</button>
-        <button class="dpill" onclick="setDateFilter(this,'week')">This Week</button>
+        <button class="dpill" onclick="setDateFilter(this,'today')">Today</button>
+        <button class="dpill active" onclick="setDateFilter(this,'week')">This Week</button>
         <button class="dpill" onclick="setDateFilter(this,'month')">This Month</button>
         <button class="dpill" onclick="setDateFilter(this,'all')">All Time</button>
         <button class="dpill" id="dpill-custom" onclick="setDateFilter(this,'custom')">&#128197; Pick Date</button>
@@ -930,7 +930,7 @@ function dbPatch(t, b, q) { return req('PATCH', t, b, q); }
 function dbDel(t, q) { return req('DELETE', t, null, q); }
 
 var inv = [], cart = [], payMethod = 'Cash', pin = '', storedPin = '1234';
-var dateFilter = 'today', finDateFilter = 'all', custFilter = 'all';
+var dateFilter = 'week', finDateFilter = 'all', custFilter = 'all';
 var finOpen = false, dMethods = {}, allSales = [], activeCat = 'All';
 var splitMode = false, lastReceiptText = '', lastReceiptRef = '', lastReceiptData = null;
 var discountAmt = 0;
@@ -1459,11 +1459,20 @@ function loadHist() {
   histPage = 0;
   allSales = [];
   document.getElementById('hist-list').innerHTML = '<div class="empty">Loading...</div>';
-  if (!authToken) {
-    setTimeout(loadHist, 500);
+  waitForAuthThenLoad(0);
+}
+
+function waitForAuthThenLoad(attempt) {
+  if (authToken) {
+    fetchHistPage(true);
     return;
   }
-  fetchHistPage(true);
+  if (attempt >= 5) {
+    document.getElementById('hist-list').innerHTML = '<div class="empty">Could not load — please refresh</div>';
+    return;
+  }
+  var delay = [200, 400, 800, 1500, 3000][attempt];
+  setTimeout(function() { waitForAuthThenLoad(attempt + 1); }, delay);
 }
 
 function fetchHistPage(reset) {
@@ -2497,13 +2506,25 @@ function deleteSale(id) {
 // ── Customers Tab ──
 var allCustomerSales = [];
 var custFilterMode = 'all';
+var custPage = 0;
+var custPageSize = 30;
+var custHasMore = false;
 
 function loadCustomers() {
+  custPage = 0;
+  allCustomerSales = [];
   var el = document.getElementById('cust-list');
   el.innerHTML = skelHtml();
-  dbGet('sales', '?order=customer_name.asc').then(function(sales) {
-    allCustomerSales = sales;
-    document.getElementById('debt-dot').classList.toggle('on', sales.some(function(s) { return s.balance > 0; }));
+  fetchCustomerPage(true);
+}
+
+function fetchCustomerPage(reset) {
+  var offset = custPage * custPageSize;
+  dbGet('sales', '?order=date.desc&offset=' + offset + '&limit=' + custPageSize).then(function(sales) {
+    if (reset) allCustomerSales = sales;
+    else allCustomerSales = allCustomerSales.concat(sales);
+    custHasMore = sales.length === custPageSize;
+    document.getElementById('debt-dot').classList.toggle('on', allCustomerSales.some(function(s) { return s.balance > 0; }));
     filterCustomers();
   }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
 }
@@ -2533,10 +2554,9 @@ function filterCustomers() {
   }).sort(function(a, b) { return map[b].totalSpent - map[a].totalSpent; });
   var el = document.getElementById('cust-list');
   if (!keys.length) { el.innerHTML = '<div class="empty">No customers found</div>'; return; }
-  // Store map on window for onclick access
   window._custMap = map;
   var html = '';
-  keys.forEach(function(name, idx) {
+  keys.forEach(function(name) {
     var c = map[name];
     var initial = name.charAt(0).toUpperCase();
     var hasDebt = c.balance > 0;
@@ -2555,7 +2575,15 @@ function filterCustomers() {
     html += '<div style="font-size:10px;color:var(--t2);">total spent</div></div>';
     html += '</div></div>';
   });
+  if (custHasMore) {
+    html += '<button onclick="loadMoreCustomers()" class="btn" style="width:100%;margin-top:8px;background:var(--s2);color:var(--t2);border:1px dashed var(--b2);">Load more customers ↓</button>';
+  }
   el.innerHTML = html;
+}
+
+function loadMoreCustomers() {
+  custPage++;
+  fetchCustomerPage(false);
 }
 
 var _cdSales = [], _cdPayMethod = 'Cash';
@@ -2757,32 +2785,42 @@ function renderFin() {
   document.getElementById('fin-pin').style.display = 'none';
   document.getElementById('fin-content').style.display = 'block';
   var today = new Date().toISOString().slice(0, 10);
-  Promise.all([dbGet('sales', '?select=paid,items,balance,date,method,payment_log,split_details'), dbGet('deductions', '?order=created_at.desc')])
-    .then(function(r) {
+  var now = new Date();
+
+  // Build server-side date filter for selected period
+  var salesQuery = '?select=paid,items,balance,date,method,payment_log,split_details';
+  var dedQuery = '?order=created_at.desc';
+  if (finDateFilter === 'today') {
+    salesQuery += '&date=eq.' + today;
+    dedQuery += '&date=eq.' + today;
+  } else if (finDateFilter === 'week') {
+    var day = now.getDay();
+    var mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    var monStr = mon.toISOString().slice(0, 10);
+    salesQuery += '&date=gte.' + monStr + '&date=lte.' + today;
+    dedQuery += '&date=gte.' + monStr + '&date=lte.' + today;
+  } else if (finDateFilter === 'month') {
+    var fromStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01';
+    salesQuery += '&date=gte.' + fromStr + '&date=lte.' + today;
+    dedQuery += '&date=gte.' + fromStr + '&date=lte.' + today;
+  }
+
+  // Always fetch today separately for the summary card
+  Promise.all([
+    dbGet('sales', salesQuery),
+    dbGet('deductions', dedQuery),
+    finDateFilter !== 'today' ? dbGet('sales', '?select=paid,items,date&date=eq.' + today) : Promise.resolve(null)
+  ]).then(function(r) {
       var allSalesData = r[0], deds = r[1];
-      // Daily summary always uses today
-      var todaySales = allSalesData.filter(function(s) { return s.date === today; });
+      // Daily summary card
+      var todaySales = r[2] !== null ? r[2] : allSalesData.filter(function(s) { return s.date === today; });
       var dayRev = todaySales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
       var dayCogs = todaySales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
       document.getElementById('fd-rev').textContent = fmt(dayRev);
       document.getElementById('fd-pro').textContent = fmt(dayRev - dayCogs);
       document.getElementById('fd-cnt').textContent = todaySales.length;
-      // Apply date filter
-      var now = new Date();
-      var sales = allSalesData.filter(function(s) {
-        if (finDateFilter === 'all') return true;
-        if (finDateFilter === 'today') return s.date === today;
-        if (finDateFilter === 'week') {
-          var day = now.getDay();
-          var mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-          return s.date >= mon.toISOString().slice(0, 10) && s.date <= today;
-        }
-        if (finDateFilter === 'month') {
-          var from = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01';
-          return s.date >= from && s.date <= today;
-        }
-        return true;
-      });
+      // All sales already filtered server-side
+      var sales = allSalesData;
       var rev = sales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
       var cogs = sales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
       var pro = rev - cogs;
