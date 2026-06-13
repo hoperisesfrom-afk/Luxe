@@ -1068,13 +1068,13 @@ function getDateRange() {
 
 function loadInv() {
   document.getElementById('inv-list').innerHTML = skelHtml();
-  dbGet('inventory', '?order=name.asc').then(function(data) {
+  dbGet('inventory', '?order=name.asc&deleted_at=is.null').then(function(data) {
     inv = data; renderInv(); checkLow();
   }).catch(function(e) { toast('Failed to load: ' + e.message, 'err'); });
 }
 
 function loadInvQ() {
-  dbGet('inventory', '?order=name.asc').then(function(data) { inv = data; checkLow(); }).catch(function() {});
+  dbGet('inventory', '?order=name.asc&deleted_at=is.null').then(function(data) { inv = data; checkLow(); }).catch(function() {});
 }
 
 function checkLow() {
@@ -1172,10 +1172,14 @@ function addItem() {
 
 function delItem(id) {
   var item = inv.find(function(i) { return i.id === id; });
-  if (!item || !confirm('Remove "' + item.name + '"?')) return;
-  dbDel('inventory', '?id=eq.' + id)
-    .then(function() { inv = inv.filter(function(i) { return i.id !== id; }); renderInv(); checkLow(); toast('Removed', 'ok'); })
-    .catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  if (!item || !confirm('Remove "' + item.name + '"?\n\nThis can be recovered from Supabase if needed.')) return;
+  var now = new Date().toISOString();
+  dbPatch('inventory', {deleted_at: now}, '?id=eq.' + id)
+    .then(function() {
+      inv = inv.filter(function(i) { return i.id !== id; });
+      renderInv(); checkLow();
+      toast('Removed ✓ (recoverable from Supabase)', 'ok');
+    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
 var _restockId = null;
@@ -1290,7 +1294,7 @@ function saveEditItems(id) {
 // ── WhatsApp Daily Summary ──
 function shareWhatsAppSummary() {
   var today = new Date().toISOString().slice(0, 10);
-  dbGet('sales', '?date=eq.' + today + '&select=paid,items,balance,method,customer_name,total').then(function(sales) {
+  dbGet('sales', '?date=eq.' + today + '&select=paid,items,balance,method,customer_name,total&deleted_at=is.null').then(function(sales) {
     var s = sales.filter(function(x) { return (x.method||'') !== 'Returned'; });
     var rev = s.reduce(function(a,x){return a+(x.paid||0);},0);
     var cogs = s.reduce(function(a,x){return a+(x.items||[]).reduce(function(ss,i){return ss+(i.buying_price||0)*i.qty;},0);},0);
@@ -1314,7 +1318,7 @@ function showPL() {
   var month = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
   var monthName = now.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
   var from = month + '-01', to = now.toISOString().slice(0,10);
-  Promise.all([dbGet('sales','?date=gte.'+from+'&date=lte.'+to), dbGet('deductions','?date=gte.'+from+'&date=lte.'+to+'&order=date.asc')])
+  Promise.all([dbGet('sales','?date=gte.'+from+'&date=lte.'+to+'&deleted_at=is.null'), dbGet('deductions','?date=gte.'+from+'&date=lte.'+to+'&order=date.asc')])
     .then(function(r) {
       var sales = r[0].filter(function(s){return (s.method||'')!=='Returned';}), deds = r[1];
       var rev = sales.reduce(function(s,x){return s+(x.paid||0);},0);
@@ -1361,7 +1365,7 @@ function sharePL() {
 var allCustNames = [];
 
 function loadSalesNames() {
-  dbGet('sales', '?select=customer_name&order=created_at.desc&limit=500').then(function(d) {
+  dbGet('sales', '?select=customer_name&order=created_at.desc&limit=500&deleted_at=is.null').then(function(d) {
     var seen = {};
     allCustNames = [];
     d.forEach(function(s) {
@@ -1479,7 +1483,7 @@ function fetchHistPage(reset) {
   var range = getDateRange();
   var from = histPage * histPageSize;
   var to = from + histPageSize - 1;
-  var query = '?order=date.desc&offset=' + from + '&limit=' + histPageSize;
+  var query = '?order=date.desc&offset=' + from + '&limit=' + histPageSize + '&deleted_at=is.null';
   if (range) {
     query += '&date=gte.' + range.from + '&date=lte.' + range.to;
   }
@@ -1740,7 +1744,7 @@ function exportLedger() {
   toast('Preparing export...', 'ok');
 
   Promise.all([
-    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
+    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc&deleted_at=is.null'),
     dbGet('deductions', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
     dbGet('transfers', '?date=gte.'+from+'&date=lte.'+to+'&order=id.asc')
   ]).then(function(r) {
@@ -2099,7 +2103,7 @@ function loadLedgerData(allTime) {
   }
 
   Promise.all([
-    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
+    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc&deleted_at=is.null'),
     dbGet('deductions', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
     dbGet('transfers', '?date=gte.'+from+'&date=lte.'+to+'&order=id.asc'),
     dbGet('returns', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc')
@@ -2495,11 +2499,12 @@ function saveEditSale(id) {
 }
 
 function deleteSale(id) {
-  if (!confirm('Delete this sale? This cannot be undone.')) return;
-  dbDel('sales', '?id=eq.' + id)
+  if (!confirm('Delete this sale?\n\nIt will be hidden from the app but recoverable from Supabase if needed.')) return;
+  var now = new Date().toISOString();
+  dbPatch('sales', {deleted_at: now}, '?id=eq.' + id)
     .then(function() {
-      toast('Sale deleted', 'ok');
-      allSales = []; loadHist();
+      toast('Sale deleted ✓ (recoverable)', 'ok');
+      allSales = []; allCustomerSales = []; loadHist();
     }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
@@ -2520,7 +2525,7 @@ function loadCustomers() {
 
 function fetchCustomerPage(reset) {
   var offset = custPage * custPageSize;
-  dbGet('sales', '?order=date.desc&offset=' + offset + '&limit=' + custPageSize).then(function(sales) {
+  dbGet('sales', '?order=date.desc&offset=' + offset + '&limit=' + custPageSize + '&deleted_at=is.null').then(function(sales) {
     if (reset) allCustomerSales = sales;
     else allCustomerSales = allCustomerSales.concat(sales);
     custHasMore = sales.length === custPageSize;
@@ -2788,7 +2793,7 @@ function renderFin() {
   var now = new Date();
 
   // Build server-side date filter for selected period
-  var salesQuery = '?select=paid,items,balance,date,method,payment_log,split_details';
+  var salesQuery = '?select=paid,items,balance,date,method,payment_log,split_details&deleted_at=is.null';
   var dedQuery = '?order=created_at.desc';
   if (finDateFilter === 'today') {
     salesQuery += '&date=eq.' + today;
@@ -2809,7 +2814,7 @@ function renderFin() {
   Promise.all([
     dbGet('sales', salesQuery),
     dbGet('deductions', dedQuery),
-    finDateFilter !== 'today' ? dbGet('sales', '?select=paid,items,date&date=eq.' + today) : Promise.resolve(null)
+    finDateFilter !== 'today' ? dbGet('sales', '?select=paid,items,date&date=eq.' + today + '&deleted_at=is.null') : Promise.resolve(null)
   ]).then(function(r) {
       var allSalesData = r[0], deds = r[1];
       // Daily summary card
@@ -2887,10 +2892,13 @@ function renderFin() {
       var html = '';
       deds.forEach(function(d) {
         var isInj = d.type === 'injection';
-        html += '<div class="dr"><div>';
-        html += '<div style="font-size:13px;font-weight:600;">' + d.reason + '</div>';
-        html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">' + (d.category || 'Injection') + ' &middot; ' + d.date + '</div>';
-        html += '</div><div style="font-weight:800;color:' + (isInj ? 'var(--ok)' : 'var(--err)') + ';">' + (isInj ? '+' : '-') + fmt(d.amount) + '</div></div>';
+        html += '<div class="dr" id="ded-' + d.id + '">';
+        html += '<div style="flex:1;"><div style="font-size:13px;font-weight:600;">' + escHtml(d.reason) + '</div>';
+        html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">' + (d.category || 'Injection') + ' &middot; ' + d.date + (d.wallet ? ' &middot; ' + d.wallet : '') + '</div></div>';
+        html += '<div style="display:flex;align-items:center;gap:10px;">';
+        html += '<span style="font-weight:800;color:' + (isInj ? 'var(--ok)' : 'var(--err)') + ';">' + (isInj ? '+' : '-') + fmt(d.amount) + '</span>';
+        html += '<button onclick="deleteDed(' + d.id + ')" style="background:none;border:none;color:var(--t3);font-size:16px;cursor:pointer;padding:4px;line-height:1;" title="Delete">&#128465;</button>';
+        html += '</div></div>';
       });
       lg.innerHTML = html;
     }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
@@ -2911,6 +2919,13 @@ function addDeduction() {
     .finally(function() { loading('ded-btn', false, 'Record Expense'); });
 }
 
+function deleteDed(id) {
+  if (!confirm('Delete this transaction? This cannot be undone.')) return;
+  dbDel('deductions', '?id=eq.' + id)
+    .then(function() { toast('Transaction deleted', 'ok'); renderFin(); })
+    .catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
+
 function addInjection() {
   var amt = parseFloat(document.getElementById('inj-amt').value);
   var rsn = document.getElementById('inj-rsn').value.trim();
@@ -2926,7 +2941,7 @@ function addInjection() {
 
 function exportCSV() {
   toast('Preparing export...', 'ok');
-  dbGet('sales', '?order=date.desc').then(function(sales) {
+  dbGet('sales', '?order=date.desc&deleted_at=is.null').then(function(sales) {
     if (!sales.length) { toast('No sales to export', 'err'); return; }
     var rows = [['Receipt Ref','Date','Customer','Items','Total','Paid','Balance','Method','Split Details']];
     sales.forEach(function(s) {
