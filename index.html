@@ -2162,122 +2162,126 @@ function shareDebtorsReport() {
     var totalOwed = d.totalOwed;
     var debtorCount = keys.length;
 
-    // Canvas setup
-    var W = 800, pad = 36, font = "'Segoe UI', -apple-system, sans-serif";
+    // High-DPI canvas: render at 2x, display at 1x for crisp text
+    var DPR = 2;
+    var W = 800 * DPR, pad = 36 * DPR, font = "'Segoe UI', -apple-system, sans-serif";
     var GOLD = '#C9972A', GOLD_DIM = '#8a6820', WHITE = '#f0ead6', GREY = '#8a7f6a';
     var BG = '#0f0f0f', ERR = '#e06060', ERR_BG = 'rgba(160,35,35,0.22)';
     var BORDER = 'rgba(201,151,42,0.2)';
 
-    var headerH = 140;
-    var tableHeaderH = 44;
-    var rowH = 64;
-    var footerH = 60;
+    var headerH = 140 * DPR;
+    var tableHeaderH = 44 * DPR;
+    var rowH = 64 * DPR;
+    var footerH = 60 * DPR;
     var maxRows = 50;
     var actualRows = Math.min(keys.length, maxRows);
     var truncated = keys.length > maxRows;
     var totalH = headerH + tableHeaderH + (actualRows * rowH) + footerH + (pad * 2);
-    if (truncated) totalH += 30;
+    if (truncated) totalH += 30 * DPR;
 
     var canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = totalH;
     var ctx = canvas.getContext('2d');
 
+    // Scale everything by DPR for crisp rendering
+    ctx.scale(DPR, DPR);
+
     // Background
     ctx.fillStyle = BG;
-    ctx.fillRect(0, 0, W, totalH);
+    ctx.fillRect(0, 0, W/DPR, totalH/DPR);
 
     // Outer gold border
     ctx.strokeStyle = GOLD;
     ctx.lineWidth = 2;
-    ctx.strokeRect(6, 6, W-12, totalH-12);
+    ctx.strokeRect(6, 6, (W/DPR)-12, (totalH/DPR)-12);
 
     // Inner subtle border
     ctx.strokeStyle = 'rgba(201,151,42,0.15)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(12, 12, W-24, totalH-24);
+    ctx.strokeRect(12, 12, (W/DPR)-24, (totalH/DPR)-24);
 
     // Saw-tooth decoration
     var sawSize = 10;
     ctx.fillStyle = '#050505';
-    for (var xi = 0; xi < W; xi += sawSize * 2) {
+    for (var xi = 0; xi < W/DPR; xi += sawSize * 2) {
       ctx.beginPath(); ctx.moveTo(xi, 6); ctx.lineTo(xi+sawSize, 6+sawSize); ctx.lineTo(xi+sawSize*2, 6); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(xi, totalH-6); ctx.lineTo(xi+sawSize, totalH-6-sawSize); ctx.lineTo(xi+sawSize*2, totalH-6); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(xi, (totalH/DPR)-6); ctx.lineTo(xi+sawSize, (totalH/DPR)-6-sawSize); ctx.lineTo(xi+sawSize*2, (totalH/DPR)-6); ctx.fill();
     }
 
-    var y = pad;
+    var y = pad/DPR;
 
     // Logo
     ctx.font = "italic bold 36px 'Georgia', serif";
     ctx.fillStyle = GOLD;
     ctx.textAlign = 'center';
-    ctx.fillText('Liz Luxe', W/2, y+32);
+    ctx.fillText('Liz Luxe', (W/DPR)/2, y+32);
     y += 46;
 
     // Subtitle
     ctx.font = "12px 'Georgia', serif";
     ctx.fillStyle = GOLD_DIM;
-    ctx.fillText('LUXURY  ·  BEAUTY  ·  STYLE', W/2, y+12);
+    ctx.fillText('LUXURY  ·  BEAUTY  ·  STYLE', (W/DPR)/2, y+12);
     y += 28;
 
     // Title
     ctx.font = "bold 18px " + font;
     ctx.fillStyle = WHITE;
-    ctx.fillText('DEBTORS REPORT', W/2, y+18);
+    ctx.fillText('DEBTORS REPORT', (W/DPR)/2, y+18);
     y += 30;
 
     // Date
     ctx.font = "13px " + font;
     ctx.fillStyle = GREY;
-    ctx.fillText(today, W/2, y+14);
+    ctx.fillText(today, (W/DPR)/2, y+14);
     y += 36;
 
     // Summary bar
     ctx.fillStyle = ERR_BG;
-    ctx.fillRect(pad, y, W - pad*2, 56);
+    ctx.fillRect(pad/DPR, y, (W/DPR) - (pad/DPR)*2, 56);
     ctx.strokeStyle = 'rgba(224,96,96,0.3)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(pad, y, W - pad*2, 56);
+    ctx.strokeRect(pad/DPR, y, (W/DPR) - (pad/DPR)*2, 56);
 
     ctx.font = "bold 24px " + font;
     ctx.fillStyle = ERR;
     ctx.textAlign = 'left';
-    ctx.fillText('KES ' + Math.round(totalOwed).toLocaleString(), pad+16, y+36);
+    ctx.fillText('KES ' + Math.round(totalOwed).toLocaleString(), (pad/DPR)+16, y+36);
     ctx.font = "11px " + font;
     ctx.fillStyle = GREY;
-    ctx.fillText('TOTAL OUTSTANDING', pad+16, y+52);
+    ctx.fillText('TOTAL OUTSTANDING', (pad/DPR)+16, y+52);
 
     ctx.textAlign = 'right';
     ctx.font = "bold 24px " + font;
     ctx.fillStyle = WHITE;
-    ctx.fillText(String(debtorCount), W-pad-16, y+36);
+    ctx.fillText(String(debtorCount), (W/DPR)-(pad/DPR)-16, y+36);
     ctx.font = "11px " + font;
     ctx.fillStyle = GREY;
-    ctx.fillText('DEBTORS', W-pad-16, y+52);
+    ctx.fillText('DEBTORS', (W/DPR)-(pad/DPR)-16, y+52);
     y += 72;
 
     // Table header
     ctx.fillStyle = 'rgba(201,151,42,0.13)';
-    ctx.fillRect(pad, y, W - pad*2, tableHeaderH);
+    ctx.fillRect(pad/DPR, y, (W/DPR) - (pad/DPR)*2, tableHeaderH/DPR);
     ctx.strokeStyle = BORDER;
     ctx.lineWidth = 1;
-    ctx.strokeRect(pad, y, W - pad*2, tableHeaderH);
+    ctx.strokeRect(pad/DPR, y, (W/DPR) - (pad/DPR)*2, tableHeaderH/DPR);
 
     ctx.font = "bold 11px " + font;
     ctx.fillStyle = GOLD;
     ctx.textAlign = 'left';
-    var colX = {name: pad+14, items: W*0.30, last: W*0.68, owed: W-pad-14};
+    var colX = {name: (pad/DPR)+14, items: (W/DPR)*0.30, last: (W/DPR)*0.68, owed: (W/DPR)-(pad/DPR)-14};
     ctx.fillText('CUSTOMER', colX.name, y+28);
     ctx.fillText('LAST ITEMS PURCHASED', colX.items, y+28);
     ctx.textAlign = 'right';
     ctx.fillText('LAST DATE', colX.last, y+28);
     ctx.fillText('OWED', colX.owed, y+28);
-    y += tableHeaderH;
+    y += tableHeaderH/DPR;
 
     // Table rows
     for (var ri = 0; ri < actualRows; ri++) {
       var name = keys[ri];
-      var sales = d.map[name]; // d.map[name] is already the array of sales
+      var sales = d.map[name];
       var owed = sales.reduce(function(a, s) { return a + (s.balance || 0); }, 0);
 
       var mostRecent = sales.slice().sort(function(a, b) { return b.date.localeCompare(a.date); })[0];
@@ -2291,14 +2295,14 @@ function shareDebtorsReport() {
 
       if (ri % 2 === 1) {
         ctx.fillStyle = 'rgba(255,255,255,0.02)';
-        ctx.fillRect(pad, y, W - pad*2, rowH);
+        ctx.fillRect(pad/DPR, y, (W/DPR) - (pad/DPR)*2, rowH/DPR);
       }
 
       ctx.strokeStyle = BORDER;
       ctx.lineWidth = 0.5;
       ctx.beginPath();
-      ctx.moveTo(pad, y + rowH);
-      ctx.lineTo(W - pad, y + rowH);
+      ctx.moveTo(pad/DPR, y + rowH/DPR);
+      ctx.lineTo((W/DPR) - pad/DPR, y + rowH/DPR);
       ctx.stroke();
 
       ctx.font = "bold 13px " + font;
@@ -2326,14 +2330,14 @@ function shareDebtorsReport() {
       ctx.textAlign = 'left';
       ctx.fillText(sales.length + ' sale' + (sales.length !== 1 ? 's' : ''), colX.name, y+42);
 
-      y += rowH;
+      y += rowH/DPR;
     }
 
     if (truncated) {
       ctx.font = "italic 12px " + font;
       ctx.fillStyle = GREY;
       ctx.textAlign = 'center';
-      ctx.fillText('… and ' + (keys.length - maxRows) + ' more debtors …', W/2, y+20);
+      ctx.fillText('… and ' + (keys.length - maxRows) + ' more debtors …', (W/DPR)/2, y+20);
       y += 30;
     }
 
@@ -2342,18 +2346,18 @@ function shareDebtorsReport() {
     ctx.font = "italic 13px 'Georgia', serif";
     ctx.fillStyle = GREY;
     ctx.textAlign = 'center';
-    ctx.fillText('✦  Liz Luxe POS  ✦', W/2, y+16);
+    ctx.fillText('✦  Liz Luxe POS  ✦', (W/DPR)/2, y+16);
 
-    // Generate data URL and open in new tab
+    // Generate high-res PNG
     var dataUrl = canvas.toDataURL('image/png');
     var win = window.open();
     if (win) {
-      var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Liz Luxe — Debtors Report</title>';
+      var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Liz Luxe Debtors</title>';
       html += '<style>body{margin:0;background:#0a0a0a;color:#f0ead6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;text-align:center;}p{padding:20px 16px 8px;font-size:14px;color:#8a7f6a;}img{width:100%;max-width:800px;display:block;margin:0 auto;border-radius:8px;}button{margin:16px;padding:12px 24px;background:#C9972A;color:#0a0a0a;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;}button:active{opacity:.8;}</style></head><body>';
-      html += '<p>📋 Liz Luxe Debtors Report &mdash; ' + today + '</p>';
-      html += '<img src="' + dataUrl + '" alt="Debtors Report">';
+      html += '<p>📋 Liz Luxe Debtors Report — ' + today + '</p>';
+      html += '<img src="' + dataUrl + '" alt="Debtors Report" style="image-rendering:-webkit-optimize-contrast;">';
       html += '<br><a href="' + dataUrl + '" download="LizLuxe-Debtors.png"><button>⬇ Download Image</button></a>';
-      html += '<p style="font-size:12px;padding-top:4px;">Long-press the image above to share via WhatsApp</p>';
+      html += '<p style="font-size:12px;padding-top:4px;">Long-press the image to share via WhatsApp</p>';
       html += '</body></html>';
       win.document.write(html);
       win.document.close();
