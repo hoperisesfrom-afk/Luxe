@@ -289,8 +289,6 @@ select option{background:#1c1c1c}
 .ldsum-lbl{color:var(--t2);}
 .ldsum-val{font-weight:700;}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 
@@ -589,15 +587,15 @@ select option{background:#1c1c1c}
               <div style="font-size:13px;font-weight:700;color:#25d366;">WhatsApp</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Today's summary</div>
             </button>
-            <button onclick="showDebtorsReport()" style="background:var(--s2);border:1px solid rgba(224,96,96,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;grid-column:1 / -1;">
-              <div style="font-size:28px;margin-bottom:8px;">&#128100;</div>
+            <button onclick="showDebtorsReport()" style="background:var(--s2);border:1px solid rgba(244,67,54,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128308;</div>
               <div style="font-size:13px;font-weight:700;color:var(--err);">Debtors Report</div>
-              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Customer balances &amp; aging · Export CSV/Excel/PDF</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Outstanding balances</div>
             </button>
-            <button onclick="backfillReceipts()" style="background:var(--s2);border:1px solid rgba(106,171,240,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;grid-column:1 / -1;">
-              <div style="font-size:28px;margin-bottom:8px;">&#128221;</div>
-              <div style="font-size:13px;font-weight:700;color:var(--info);">Fix Missing Receipts</div>
-              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Generate receipt numbers for old sales that lack them</div>
+            <button onclick="showRecycleBin()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128465;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--t2);">Recycle Bin</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Deleted items &amp; sales</div>
             </button>
           </div>
         </div>
@@ -827,6 +825,27 @@ select option{background:#1c1c1c}
   </div>
 </div>
 
+<!-- ══ DEBTORS REPORT MODAL ══ -->
+<div class="edit-items-modal" id="debtors-modal">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button onclick="document.getElementById('debtors-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+      <div style="font-weight:700;font-size:16px;">Debtors Report</div>
+    </div>
+    <button onclick="shareDebtorsReport()" style="background:none;border:none;color:#25d366;font-size:20px;cursor:pointer;">&#128232;</button>
+  </div>
+  <div class="edit-items-body" id="debtors-body"></div>
+</div>
+
+<!-- ══ RECYCLE BIN MODAL ══ -->
+<div class="edit-items-modal" id="recycle-modal">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+    <button onclick="document.getElementById('recycle-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+    <div style="font-weight:700;font-size:16px;">Recycle Bin</div>
+  </div>
+  <div class="edit-items-body" id="recycle-body"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -956,37 +975,9 @@ function updateDiscount() {
   renderSheet();
 }
 
-// Receipt number generator — guaranteed unique per device/session
-// Format: LX-YYYYMMDD-XXXX where XXXX is sequential per day
-// Falls back to timestamp if counter exhausted
-var _receiptCounter = {};
-var _usedRefs = {}; // Track refs generated this session
-
 function genRef() {
-  var now = new Date();
-  var y = now.getFullYear();
-  var m = String(now.getMonth() + 1).padStart(2, '0');
-  var d = String(now.getDate()).padStart(2, '0');
-  var dateKey = y + m + d;
-  var ms = String(now.getMilliseconds()).padStart(3, '0');
-
-  _receiptCounter[dateKey] = (_receiptCounter[dateKey] || 0) + 1;
-  var seq = String(_receiptCounter[dateKey]).padStart(4, '0');
-  var ref = 'LX-' + dateKey + '-' + seq;
-
-  // If somehow this ref was already used this session, append ms
-  if (_usedRefs[ref]) {
-    ref = 'LX-' + dateKey + '-' + seq + ms;
-  }
-  _usedRefs[ref] = true;
-  return ref;
-}
-
-// Generate receipt ref for a specific date (for backfilling old sales)
-function genRefForDate(dateStr, seqNum) {
-  var clean = dateStr.replace(/-/g, '');
-  var seq = String(seqNum).padStart(4, '0');
-  return 'LX-' + clean + '-' + seq;
+  var n = Math.floor(10000 + Math.random() * 90000);
+  return 'LX-' + n;
 }
 function fmt(n) { return 'KES ' + Math.round(n || 0).toLocaleString(); }
 
@@ -1108,13 +1099,13 @@ function getDateRange() {
 
 function loadInv() {
   document.getElementById('inv-list').innerHTML = skelHtml();
-  dbGet('inventory', '?order=name.asc&deleted_at=is.null').then(function(data) {
+  dbGet('inventory', '?order=name.asc').then(function(data) {
     inv = data; renderInv(); checkLow();
   }).catch(function(e) { toast('Failed to load: ' + e.message, 'err'); });
 }
 
 function loadInvQ() {
-  dbGet('inventory', '?order=name.asc&deleted_at=is.null').then(function(data) { inv = data; checkLow(); }).catch(function() {});
+  dbGet('inventory', '?order=name.asc').then(function(data) { inv = data; checkLow(); }).catch(function() {});
 }
 
 function checkLow() {
@@ -1212,14 +1203,23 @@ function addItem() {
 
 function delItem(id) {
   var item = inv.find(function(i) { return i.id === id; });
-  if (!item || !confirm('Remove "' + item.name + '"?\n\nThis can be recovered from Supabase if needed.')) return;
-  var now = new Date().toISOString();
-  dbPatch('inventory', {deleted_at: now}, '?id=eq.' + id)
-    .then(function() {
-      inv = inv.filter(function(i) { return i.id !== id; });
-      renderInv(); checkLow();
-      toast('Removed ✓ (recoverable from Supabase)', 'ok');
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  if (!item) return;
+  var reason = prompt('Reason for removing "' + item.name + '"? (optional)', '');
+  if (reason === null) return; // cancelled
+  if (!confirm('Remove "' + item.name + '"?\n\nA backup will be saved to the Recycle Bin.')) return;
+  // Save to tombstone table first
+  dbPost('deleted_records', {
+    table_name: 'inventory',
+    record_id: item.id,
+    record_data: item,
+    reason: reason || ''
+  }).then(function() {
+    return dbDel('inventory', '?id=eq.' + id);
+  }).then(function() {
+    inv = inv.filter(function(i) { return i.id !== id; });
+    renderInv(); checkLow();
+    toast('Removed ✓ — saved to Recycle Bin', 'ok');
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
 var _restockId = null;
@@ -1334,7 +1334,7 @@ function saveEditItems(id) {
 // ── WhatsApp Daily Summary ──
 function shareWhatsAppSummary() {
   var today = new Date().toISOString().slice(0, 10);
-  dbGet('sales', '?date=eq.' + today + '&select=paid,items,balance,method,customer_name,total&deleted_at=is.null').then(function(sales) {
+  dbGet('sales', '?date=eq.' + today + '&select=paid,items,balance,method,customer_name,total').then(function(sales) {
     var s = sales.filter(function(x) { return (x.method||'') !== 'Returned'; });
     var rev = s.reduce(function(a,x){return a+(x.paid||0);},0);
     var cogs = s.reduce(function(a,x){return a+(x.items||[]).reduce(function(ss,i){return ss+(i.buying_price||0)*i.qty;},0);},0);
@@ -1358,7 +1358,7 @@ function showPL() {
   var month = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
   var monthName = now.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
   var from = month + '-01', to = now.toISOString().slice(0,10);
-  Promise.all([dbGet('sales','?date=gte.'+from+'&date=lte.'+to+'&deleted_at=is.null'), dbGet('deductions','?date=gte.'+from+'&date=lte.'+to+'&order=date.asc')])
+  Promise.all([dbGet('sales','?date=gte.'+from+'&date=lte.'+to+''), dbGet('deductions','?date=gte.'+from+'&date=lte.'+to+'&order=date.asc')])
     .then(function(r) {
       var sales = r[0].filter(function(s){return (s.method||'')!=='Returned';}), deds = r[1];
       var rev = sales.reduce(function(s,x){return s+(x.paid||0);},0);
@@ -1405,7 +1405,7 @@ function sharePL() {
 var allCustNames = [];
 
 function loadSalesNames() {
-  dbGet('sales', '?select=customer_name&order=created_at.desc&limit=500&deleted_at=is.null').then(function(d) {
+  dbGet('sales', '?select=customer_name&order=created_at.desc&limit=500').then(function(d) {
     var seen = {};
     allCustNames = [];
     d.forEach(function(s) {
@@ -1523,7 +1523,7 @@ function fetchHistPage(reset) {
   var range = getDateRange();
   var from = histPage * histPageSize;
   var to = from + histPageSize - 1;
-  var query = '?order=date.desc&offset=' + from + '&limit=' + histPageSize + '&deleted_at=is.null';
+  var query = '?order=date.desc&offset=' + from + '&limit=' + histPageSize + '';
   if (range) {
     query += '&date=gte.' + range.from + '&date=lte.' + range.to;
   }
@@ -1569,7 +1569,6 @@ function renderHistList(reset) {
     html += '<div><div style="font-weight:700;font-size:15px;">' + s.customer_name + '</div>';
     html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">' + s.date;
     if (s.receipt_ref) html += ' · <span style="font-family:monospace;font-size:10px;">' + s.receipt_ref + '</span>';
-    else html += ' · <span style="font-family:monospace;font-size:10px;color:var(--err);cursor:pointer;" onclick="generateReceiptForSale(' + s.id + ', event)" title="Click to generate receipt number">[NO REF — Click to fix]</span>';
     html += '</div></div>';
     html += '<span style="font-size:17px;font-weight:800;color:var(--gold)">' + fmt(s.total) + '</span></div>';
     html += '<div style="font-size:12px;color:var(--t2);margin-bottom:8px;">' + its + '</div>';
@@ -1601,540 +1600,6 @@ function loadMoreHist() {
 
 
 
-
-
-// ═══════════════════════════════════════════════════════════════
-// ── DEBTORS REPORT ──
-// ═══════════════════════════════════════════════════════════════
-
-var _debtorsData = []; // cached for exports
-
-// ═══════════════════════════════════════════════════════════════
-// ── BACKFILL MISSING RECEIPT NUMBERS ──
-// ═══════════════════════════════════════════════════════════════
-
-function backfillReceipts() {
-  if (!confirm('This will generate receipt numbers for all old sales that don't have one.
-
-Proceed?')) return;
-
-  toast('Checking for missing receipts...', 'ok');
-
-  // Fetch all sales without receipt_ref
-  dbGet('sales', '?select=id,date,receipt_ref&order=date.asc&deleted_at=is.null').then(function(sales) {
-    var missing = sales.filter(function(s) { return !s.receipt_ref || s.receipt_ref === ''; });
-    if (!missing.length) {
-      toast('All sales already have receipt numbers ✓', 'ok');
-      return;
-    }
-
-    if (!confirm(missing.length + ' sale' + (missing.length !== 1 ? 's' : '') + ' missing receipt numbers.
-Generate now?')) return;
-
-    // Group by date and assign sequential numbers
-    var byDate = {};
-    missing.forEach(function(s) {
-      if (!byDate[s.date]) byDate[s.date] = [];
-      byDate[s.date].push(s);
-    });
-
-    var ps = [];
-    Object.keys(byDate).sort().forEach(function(date) {
-      byDate[date].forEach(function(s, idx) {
-        var ref = genRefForDate(date, idx + 1);
-        ps.push(dbPatch('sales', {receipt_ref: ref}, '?id=eq.' + s.id));
-      });
-    });
-
-    return Promise.all(ps);
-  }).then(function(results) {
-    if (results) {
-      toast('Generated ' + results.length + ' receipt numbers ✓', 'ok');
-      allSales = []; // Force refresh
-    }
-  }).catch(function(e) {
-    toast('Error: ' + e.message, 'err');
-  });
-}
-
-// Generate a receipt number for a single sale (from history click)
-function generateReceiptForSale(id, event) {
-  if (event) event.stopPropagation();
-  if (!confirm('Generate receipt number for this sale?')) return;
-
-  var sale = allSales.find(function(s) { return s.id === id; });
-  if (!sale) { toast('Sale not found', 'err'); return; }
-
-  // Count how many sales already have refs for this date
-  var dateSales = allSales.filter(function(s) { return s.date === sale.date && s.receipt_ref && s.receipt_ref !== ''; });
-  var seq = dateSales.length + 1;
-  var ref = genRefForDate(sale.date, seq);
-
-  dbPatch('sales', {receipt_ref: ref}, '?id=eq.' + id)
-    .then(function() {
-      sale.receipt_ref = ref;
-      toast('Receipt ' + ref + ' generated ✓', 'ok');
-      renderHistList(true); // Refresh the list
-    })
-    .catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
-
-function showDebtorsReport() {
-  document.getElementById('debtors-report-modal').classList.add('on');
-  document.getElementById('debtors-report-body').innerHTML = '<div class="empty">Loading...</div>';
-  loadDebtorsData();
-}
-
-function loadDebtorsData() {
-  // Fetch all sales to build debtor report
-  dbGet('sales', '?order=date.desc&deleted_at=is.null&limit=1000').then(function(sales) {
-    var custMap = {};
-    sales.forEach(function(s) {
-      var n = s.customer_name || 'Walk-in';
-      if (n === 'Walk-in') return; // skip walk-in for debtors
-      if (!custMap[n]) {
-        custMap[n] = {
-          name: n,
-          sales: [],
-          totalSpent: 0,
-          totalPaid: 0,
-          balance: 0,
-          lastDate: '',
-          firstDate: '',
-          itemCount: 0,
-          visits: 0
-        };
-      }
-      var c = custMap[n];
-      c.sales.push(s);
-      c.totalSpent += s.total || 0;
-      c.totalPaid += s.paid || 0;
-      c.balance += s.balance || 0;
-      c.visits++;
-      c.itemCount += (s.items || []).reduce(function(a, i) { return a + i.qty; }, 0);
-      if (!c.firstDate || s.date < c.firstDate) c.firstDate = s.date;
-      if (!c.lastDate || s.date > c.lastDate) c.lastDate = s.date;
-    });
-    _debtorsData = Object.values(custMap);
-    renderDebtorsReport();
-  }).catch(function(e) {
-    document.getElementById('debtors-report-body').innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
-  });
-}
-
-function renderDebtorsReport() {
-  var filter = document.getElementById('dr-filter').value;
-  var sort = document.getElementById('dr-sort').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-
-  var list = _debtorsData.slice();
-
-  // Filter
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-
-  // Search
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  // Sort
-  list.sort(function(a, b) {
-    if (sort === 'balance-desc') return b.balance - a.balance;
-    if (sort === 'balance-asc') return a.balance - b.balance;
-    if (sort === 'name-asc') return a.name.localeCompare(b.name);
-    if (sort === 'name-desc') return b.name.localeCompare(a.name);
-    if (sort === 'last-date') return (b.lastDate || '').localeCompare(a.lastDate || '');
-    if (sort === 'total-desc') return b.totalSpent - a.totalSpent;
-    return 0;
-  });
-
-  // Summary stats
-  var totalDebt = list.reduce(function(s, c) { return s + Math.max(0, c.balance); }, 0);
-  var debtCount = list.filter(function(c) { return c.balance > 0; }).length;
-  var clearedCount = list.filter(function(c) { return c.balance <= 0; }).length;
-  document.getElementById('dr-total-debt').textContent = fmt(totalDebt);
-  document.getElementById('dr-customer-count').textContent = list.length;
-  document.getElementById('dr-cleared-count').textContent = clearedCount;
-  document.getElementById('dr-subtitle').textContent = 
-    filter === 'debt' ? debtCount + ' customer' + (debtCount !== 1 ? 's' : '') + ' with outstanding balance' :
-    filter === 'cleared' ? clearedCount + ' cleared customer' + (clearedCount !== 1 ? 's' : '') :
-    list.length + ' customer' + (list.length !== 1 ? 's' : '') + ' · ' + fmt(totalDebt) + ' owed';
-
-  var el = document.getElementById('debtors-report-body');
-  if (!list.length) {
-    el.innerHTML = '<div class="empty">No customers match your filter</div>';
-    return;
-  }
-
-  var html = '<div style="padding-bottom:20px;">';
-  list.forEach(function(c) {
-    var hasDebt = c.balance > 0;
-    var daysSinceLast = c.lastDate ? Math.floor((Date.now() - new Date(c.lastDate + 'T12:00:00').getTime()) / 86400000) : null;
-    var aging = '';
-    if (hasDebt && daysSinceLast !== null) {
-      if (daysSinceLast <= 7) aging = '<span style="color:var(--ok);font-size:10px;">● Recent</span>';
-      else if (daysSinceLast <= 30) aging = '<span style="color:#ff9800;font-size:10px;">● 1–4 weeks</span>';
-      else aging = '<span style="color:var(--err);font-size:10px;">● ' + Math.floor(daysSinceLast / 30) + ' month' + (Math.floor(daysSinceLast / 30) > 1 ? 's' : '') + '+</span>';
-    }
-
-    html += '<div style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:14px;margin-bottom:10px;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">';
-    html += '<div style="display:flex;align-items:center;gap:10px;">';
-    html += '<div class="cust-avatar" style="width:36px;height:36px;font-size:14px;">' + c.name.charAt(0).toUpperCase() + '</div>';
-    html += '<div>';
-    html += '<div style="font-weight:700;font-size:15px;">' + escHtml(c.name) + '</div>';
-    html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">' + c.visits + ' purchase' + (c.visits !== 1 ? 's' : '') + ' · ' + c.itemCount + ' item' + (c.itemCount !== 1 ? 's' : '') + '</div>';
-    html += '</div></div>';
-    html += '<div style="text-align:right;">';
-    if (hasDebt) {
-      html += '<div style="font-size:18px;font-weight:800;color:var(--err);">' + fmt(c.balance) + '</div>';
-      html += '<div style="font-size:10px;color:var(--err);font-weight:700;">OWING</div>';
-    } else {
-      html += '<div style="font-size:18px;font-weight:800;color:var(--ok);">CLEARED</div>';
-    }
-    html += '</div></div>';
-
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">';
-    html += '<div style="background:var(--s3);border-radius:var(--rs);padding:8px;text-align:center;"><div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;">Total Spent</div><div style="font-size:14px;font-weight:800;color:var(--gold);margin-top:2px;">' + fmt(c.totalSpent) + '</div></div>';
-    html += '<div style="background:var(--s3);border-radius:var(--rs);padding:8px;text-align:center;"><div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;">Total Paid</div><div style="font-size:14px;font-weight:800;color:var(--ok);margin-top:2px;">' + fmt(c.totalPaid) + '</div></div>';
-    html += '<div style="background:var(--s3);border-radius:var(--rs);padding:8px;text-align:center;"><div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;">Last Purchase</div><div style="font-size:14px;font-weight:800;color:var(--t);margin-top:2px;">' + (c.lastDate || '—') + '</div></div>';
-    html += '</div>';
-
-    if (hasDebt) {
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">';
-      html += '<div style="font-size:11px;color:var(--t2);">First: ' + (c.firstDate || '—') + ' · Last: ' + (c.lastDate || '—') + '</div>';
-      html += aging;
-      html += '</div>';
-
-      // Show individual unpaid sales
-      var unpaid = c.sales.filter(function(s) { return (s.balance || 0) > 0; });
-      if (unpaid.length > 0) {
-        html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--b3);">';
-        html += '<div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px;">Unpaid Sales</div>';
-        unpaid.forEach(function(s) {
-          var items = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
-          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--b3);font-size:12px;">';
-          html += '<div style="flex:1;min-width:0;"><div style="font-weight:600;">' + s.date + '</div><div style="color:var(--t2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + items + '</div></div>';
-          html += '<div style="text-align:right;flex-shrink:0;margin-left:8px;"><div style="font-weight:700;color:var(--err);">' + fmt(s.balance) + '</div><div style="font-size:10px;color:var(--t2);">of ' + fmt(s.total) + '</div></div>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
-    }
-    html += '</div>';
-  });
-  html += '</div>';
-  el.innerHTML = html;
-}
-
-// ── Export Debtors to CSV ──
-function exportDebtorsCSV() {
-  var filter = document.getElementById('dr-filter').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-  var list = _debtorsData.slice();
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  var rows = [['Customer Name','Total Spent (KES)','Total Paid (KES)','Balance (KES)','Visits','Items','First Purchase','Last Purchase','Status']];
-  list.forEach(function(c) {
-    rows.push([
-      c.name,
-      c.totalSpent,
-      c.totalPaid,
-      c.balance,
-      c.visits,
-      c.itemCount,
-      c.firstDate || '',
-      c.lastDate || '',
-      c.balance > 0 ? 'OWING' : 'CLEARED'
-    ]);
-  });
-
-  var csv = rows.map(function(r) {
-    return r.map(function(v) {
-      var val = String(v).replace(/"/g, '""');
-      return val.indexOf(',') >= 0 || val.indexOf('"') >= 0 || val.indexOf('
-') >= 0 ? '"' + val + '"' : val;
-    }).join(',');
-  }).join('
-');
-
-  var blob = new Blob(['﻿' + csv], {type: 'text/csv;charset=utf-8;'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = 'LizLuxe-Debtors-' + new Date().toISOString().slice(0, 10) + '.csv';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast('Exported ' + list.length + ' customers to CSV', 'ok');
-}
-
-// ── Export Debtors to Excel (SpreadsheetML) ──
-function exportDebtorsExcel() {
-  var filter = document.getElementById('dr-filter').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-  var list = _debtorsData.slice();
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  var totalDebt = list.reduce(function(s, c) { return s + Math.max(0, c.balance); }, 0);
-  var debtCount = list.filter(function(c) { return c.balance > 0; }).length;
-
-  // Sheet 1: Summary
-  var s1 = [
-    ['LIZ LUXE — DEBTORS REPORT'],
-    ['Generated: ' + new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'})],
-    [],
-    ['Summary'],
-    ['Total Customers', list.length],
-    ['Customers with Balance', debtCount],
-    ['Total Amount Owed (KES)', totalDebt],
-    [],
-    ['Customer Name','Total Spent (KES)','Total Paid (KES)','Balance (KES)','Visits','Items','First Purchase','Last Purchase','Status']
-  ];
-  list.forEach(function(c) {
-    s1.push([c.name, c.totalSpent, c.totalPaid, c.balance, c.visits, c.itemCount, c.firstDate || '', c.lastDate || '', c.balance > 0 ? 'OWING' : 'CLEARED']);
-  });
-
-  // Sheet 2: Detailed Unpaid Sales
-  var s2 = [
-    ['LIZ LUXE — UNPAID SALES DETAIL'],
-    ['Generated: ' + new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'})],
-    [],
-    ['Customer','Date','Receipt Ref','Items','Total (KES)','Paid (KES)','Balance (KES)','Method']
-  ];
-  list.forEach(function(c) {
-    var unpaid = c.sales.filter(function(s) { return (s.balance || 0) > 0; });
-    unpaid.forEach(function(s) {
-      var items = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(' | ');
-      s2.push([c.name, s.date, s.receipt_ref || '', items, s.total || 0, s.paid || 0, s.balance || 0, s.method || '']);
-    });
-  });
-
-  function escXml(v) {
-    if (v === null || v === undefined) return '';
-    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  function buildWorkbook(sheets) {
-    var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>';
-    xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
-    xml += '<Styles>';
-    xml += '<Style ss:ID="H"><Font ss:Bold="1" ss:Size="13" ss:Color="#C9972A"/></Style>';
-    xml += '<Style ss:ID="B"><Font ss:Bold="1"/></Style>';
-    xml += '<Style ss:ID="T"><Font ss:Bold="1" ss:Size="11"/></Style>';
-    xml += '<Style ss:ID="RED"><Font ss:Bold="1" ss:Color="#C62828"/></Style>';
-    xml += '<Style ss:ID="GREEN"><Font ss:Color="#2E7D32"/></Style>';
-    xml += '</Styles>';
-    sheets.forEach(function(s) {
-      xml += '<Worksheet ss:Name="' + escXml(s.name) + '"><Table>';
-      s.rows.forEach(function(row, ri) {
-        if (!row || !row.length) { xml += '<Row></Row>'; return; }
-        xml += '<Row>';
-        row.forEach(function(cell) {
-          var styleId = '';
-          if (ri === 0) styleId = ' ss:StyleID="H"';
-          else if (ri === 3 && s.name.indexOf('Summary') >= 0) styleId = ' ss:StyleID="B"';
-          else if (ri === 8 && s.name.indexOf('Summary') >= 0) styleId = ' ss:StyleID="T"';
-          else if (ri === 3 && s.name.indexOf('Detail') >= 0) styleId = ' ss:StyleID="T"';
-          var val = (cell === null || cell === undefined) ? '' : cell;
-          var type = (typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)) && val.trim() !== '')) ? 'Number' : 'String';
-          if (type === 'Number' && val === '') type = 'String';
-          xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(val) + '</Data></Cell>';
-        });
-        xml += '</Row>';
-      });
-      xml += '</Table></Worksheet>';
-    });
-    xml += '</Workbook>';
-    return xml;
-  }
-
-  var workbook = buildWorkbook([
-    {name: 'Debtors Summary', rows: s1},
-    {name: 'Unpaid Detail', rows: s2}
-  ]);
-
-  var blob = new Blob([workbook], {type: 'application/vnd.ms-excel;charset=utf-8'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = 'LizLuxe-Debtors-' + new Date().toISOString().slice(0, 10) + '.xls';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast('Exported ' + list.length + ' customers to Excel', 'ok');
-}
-
-// ── Export Debtors to PDF ──
-function exportDebtorsPDF() {
-  var filter = document.getElementById('dr-filter').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-  var list = _debtorsData.slice();
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  var totalDebt = list.reduce(function(s, c) { return s + Math.max(0, c.balance); }, 0);
-  var debtCount = list.filter(function(c) { return c.balance > 0; }).length;
-
-  // Check if jsPDF is available
-  if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
-    toast('PDF library not loaded. Please check your connection.', 'err');
-    return;
-  }
-
-  var doc = new window.jspdf.jsPDF('p', 'mm', 'a4');
-  var pageW = doc.internal.pageSize.getWidth();
-  var pageH = doc.internal.pageSize.getHeight();
-  var margin = 14;
-  var y = 20;
-
-  // Header
-  doc.setFillColor(10, 10, 10);
-  doc.rect(0, 0, pageW, pageH, 'F');
-
-  doc.setTextColor(201, 151, 42);
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('LIZ LUXE', pageW / 2, y, {align: 'center'});
-  y += 8;
-  doc.setFontSize(10);
-  doc.setTextColor(138, 127, 106);
-  doc.setFont('helvetica', 'normal');
-  doc.text('DEBTORS REPORT', pageW / 2, y, {align: 'center'});
-  y += 6;
-  doc.setFontSize(9);
-  doc.text(new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'}), pageW / 2, y, {align: 'center'});
-  y += 12;
-
-  // Summary box
-  doc.setDrawColor(201, 151, 42);
-  doc.setLineWidth(0.3);
-  doc.setFillColor(20, 20, 20);
-  doc.roundedRect(margin, y, pageW - margin * 2, 22, 2, 2, 'FD');
-  doc.setFontSize(10);
-  doc.setTextColor(240, 234, 214);
-  doc.text('Total Customers: ' + list.length, margin + 5, y + 8);
-  doc.text('With Balance: ' + debtCount, margin + 5, y + 16);
-  doc.setTextColor(224, 96, 96);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Total Owed: KES ' + Math.round(totalDebt).toLocaleString(), pageW - margin - 5, y + 12, {align: 'right'});
-  doc.setFont('helvetica', 'normal');
-  y += 28;
-
-  // Table
-  var tableData = list.map(function(c) {
-    return [
-      c.name,
-      'KES ' + Math.round(c.totalSpent).toLocaleString(),
-      'KES ' + Math.round(c.totalPaid).toLocaleString(),
-      'KES ' + Math.round(c.balance).toLocaleString(),
-      c.balance > 0 ? 'OWING' : 'CLEARED',
-      c.lastDate || '—'
-    ];
-  });
-
-  if (typeof doc.autoTable === 'function') {
-    doc.autoTable({
-      startY: y,
-      head: [['Customer', 'Total Spent', 'Total Paid', 'Balance', 'Status', 'Last Purchase']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: {
-        fillColor: [201, 151, 42],
-        textColor: [10, 10, 10],
-        fontStyle: 'bold',
-        fontSize: 9
-      },
-      bodyStyles: {
-        fillColor: [20, 20, 20],
-        textColor: [240, 234, 214],
-        fontSize: 8
-      },
-      alternateRowStyles: {
-        fillColor: [28, 28, 28]
-      },
-      styles: {
-        lineColor: [201, 151, 42],
-        lineWidth: 0.2,
-        cellPadding: 2
-      },
-      columnStyles: {
-        3: { textColor: function(cell) { return cell.raw.indexOf('0') === 0 && cell.raw === 'KES 0' ? [240, 234, 214] : [224, 96, 96]; } },
-        4: { textColor: function(cell) { return cell.raw === 'OWING' ? [224, 96, 96] : [123, 201, 80]; } }
-      },
-      margin: {left: margin, right: margin},
-      didDrawPage: function(data) {
-        doc.setFillColor(10, 10, 10);
-        doc.rect(0, 0, pageW, pageH, 'F');
-      }
-    });
-  } else {
-    // Fallback if autoTable not loaded
-    doc.setTextColor(240, 234, 214);
-    doc.setFontSize(10);
-    doc.text('PDF table plugin not available. Please refresh and try again.', margin, y);
-  }
-
-  // Footer
-  var pageCount = doc.internal.getNumberOfPages();
-  for (var i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Liz Luxe POS · Page ' + i + ' of ' + pageCount, pageW / 2, pageH - 8, {align: 'center'});
-  }
-
-  doc.save('LizLuxe-Debtors-' + new Date().toISOString().slice(0, 10) + '.pdf');
-  toast('Exported ' + list.length + ' customers to PDF', 'ok');
-}
-
-// ── Share Debtors via WhatsApp ──
-function shareDebtorsWhatsApp() {
-  var filter = document.getElementById('dr-filter').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-  var list = _debtorsData.slice();
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  var totalDebt = list.reduce(function(s, c) { return s + Math.max(0, c.balance); }, 0);
-  var debtors = list.filter(function(c) { return c.balance > 0; });
-
-  var d = new Date();
-  var dateStr = d.toLocaleDateString('en-KE', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
-  var msg = '&#128100; *LIZ LUXE — DEBTORS REPORT*
-&#128197; ' + dateStr + '
-
-';
-  msg += '*Summary*
-';
-  msg += '&#8226; Total Customers: ' + list.length + '
-';
-  msg += '&#8226; With Balance: ' + debtors.length + '
-';
-  msg += '&#8226; Total Owed: KES ' + Math.round(totalDebt).toLocaleString() + '
-
-';
-
-  if (debtors.length > 0) {
-    msg += '*Outstanding Balances*
-';
-    debtors.slice(0, 15).forEach(function(c) {
-      msg += '&#8226; ' + c.name + ': KES ' + Math.round(c.balance).toLocaleString() + '
-';
-    });
-    if (debtors.length > 15) msg += '...and ' + (debtors.length - 15) + ' more
-';
-  }
-
-  msg += '
-&#10022; _Liz Luxe POS_';
-  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
-}
 
 // ── Customers Tab ──
 var allCustomerSales = [];
@@ -2319,7 +1784,7 @@ function exportLedger() {
   toast('Preparing export...', 'ok');
 
   Promise.all([
-    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc&deleted_at=is.null'),
+    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
     dbGet('deductions', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
     dbGet('transfers', '?date=gte.'+from+'&date=lte.'+to+'&order=id.asc')
   ]).then(function(r) {
@@ -2605,6 +2070,132 @@ function reshareReceipt(id) {
 }
 
 
+// ── Debtors Report ──
+function showDebtorsReport() {
+  document.getElementById('debtors-modal').classList.add('on');
+  var el = document.getElementById('debtors-body');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  dbGet('sales', '?balance=gt.0&order=customer_name.asc').then(function(sales) {
+    if (!sales.length) { el.innerHTML = '<div class="empty" style="padding:40px;">No outstanding debts 🎉</div>'; return; }
+    var map = {};
+    sales.forEach(function(s) {
+      var n = s.customer_name || 'Unknown';
+      if (!map[n]) map[n] = [];
+      map[n].push(s);
+    });
+    var totalOwed = sales.reduce(function(a, s) { return a + (s.balance || 0); }, 0);
+    var html = '<div style="padding:16px;">';
+    html += '<div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--r);padding:14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">';
+    html += '<div><div style="font-size:11px;color:var(--err);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Total Outstanding</div>';
+    html += '<div style="font-size:22px;font-weight:800;color:var(--err);">' + fmt(totalOwed) + '</div></div>';
+    html += '<div style="text-align:right;"><div style="font-size:11px;color:var(--t2);">Debtors</div>';
+    html += '<div style="font-size:22px;font-weight:800;color:var(--t);">' + Object.keys(map).length + '</div></div></div>';
+    Object.keys(map).sort().forEach(function(name) {
+      var custSales = map[name];
+      var owed = custSales.reduce(function(a, s) { return a + (s.balance || 0); }, 0);
+      html += '<div style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:14px;margin-bottom:10px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+      html += '<div style="font-weight:700;font-size:16px;">' + escHtml(name) + '</div>';
+      html += '<div style="font-size:18px;font-weight:800;color:var(--err);">' + fmt(owed) + '</div></div>';
+      custSales.forEach(function(s) {
+        var its = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
+        html += '<div style="padding:8px 0;border-top:1px solid var(--b3);font-size:12px;">';
+        html += '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">';
+        html += '<span style="color:var(--t2);">' + s.date + '</span>';
+        html += '<span>Order: ' + fmt(s.total) + ' &middot; <span style="color:var(--err);font-weight:700;">Owes: ' + fmt(s.balance) + '</span></span></div>';
+        html += '<div style="color:var(--t2);">' + escHtml(its) + '</div>';
+        if (s.payment_log && s.payment_log.length) {
+          s.payment_log.forEach(function(p) {
+            html += '<div style="color:var(--ok);margin-top:2px;">&#10003; Paid ' + fmt(p.amount) + ' via ' + p.method + ' on ' + p.date + '</div>';
+          });
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+    window._debtorsData = {map: map, totalOwed: totalOwed};
+  }).catch(function(e) { el.innerHTML = '<div class="empty">Error: ' + e.message + '</div>'; });
+}
+
+function shareDebtorsReport() {
+  var d = window._debtorsData;
+  if (!d) { toast('Open report first', 'err'); return; }
+  var today = new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'});
+  var msg = '📋 *LIZ LUXE — DEBTORS REPORT*\n📅 ' + today + '\n\n';
+  msg += '💰 Total Outstanding: KES ' + Math.round(d.totalOwed).toLocaleString() + '\n';
+  msg += '👥 Debtors: ' + Object.keys(d.map).length + '\n\n';
+  Object.keys(d.map).sort().forEach(function(name) {
+    var sales = d.map[name];
+    var owed = sales.reduce(function(a, s) { return a + (s.balance || 0); }, 0);
+    msg += '• ' + name + ': KES ' + Math.round(owed).toLocaleString() + '\n';
+    sales.forEach(function(s) {
+      var its = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
+      msg += '  ↳ ' + s.date + ' · ' + its + ' · Owes ' + fmt(s.balance) + '\n';
+    });
+  });
+  msg += '\n✨ _Liz Luxe POS_';
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+
+// ── Recycle Bin ──
+function showRecycleBin() {
+  document.getElementById('recycle-modal').classList.add('on');
+  var el = document.getElementById('recycle-body');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  dbGet('deleted_records', '?order=deleted_at.desc').then(function(records) {
+    if (!records.length) { el.innerHTML = '<div class="empty" style="padding:40px;">Recycle Bin is empty ✓</div>'; return; }
+    var html = '<div style="padding:16px;">';
+    html += '<div style="font-size:12px;color:var(--t2);margin-bottom:14px;">Tap Restore to recover. Tap Purge to permanently delete.</div>';
+    records.forEach(function(r) {
+      var data = r.record_data || {};
+      var title = r.table_name === 'sales' ? escHtml(data.customer_name || 'Sale') + ' — ' + fmt(data.total) :
+                  r.table_name === 'inventory' ? escHtml(data.name || 'Item') : r.table_name;
+      var subtitle = r.table_name === 'sales' ? (data.date || '') + ' · ' + (data.method || '') :
+                     r.table_name === 'inventory' ? 'Buy: ' + fmt(data.buying_price) + ' · Sell: ' + fmt(data.selling_price) : '';
+      var deletedDate = r.deleted_at ? new Date(r.deleted_at).toLocaleDateString('en-KE',{day:'numeric',month:'short',year:'numeric'}) : '';
+      html += '<div style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:12px;margin-bottom:8px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">';
+      html += '<div><div style="font-weight:700;font-size:14px;">' + title + '</div>';
+      html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">' + escHtml(subtitle) + '</div>';
+      if (r.reason) html += '<div style="font-size:11px;color:var(--t3);margin-top:2px;">Reason: ' + escHtml(r.reason) + '</div>';
+      html += '</div><span style="font-size:10px;color:var(--t3);flex-shrink:0;">' + deletedDate + '</span></div>';
+      html += '<div style="display:flex;gap:8px;align-items:center;">';
+      html += '<span class="chip" style="font-size:10px;">' + r.table_name + '</span>';
+      html += '<button class="btn bsm bok-btn" onclick="restoreRecord(' + r.id + ',\'' + r.table_name + '\')" style="margin-left:auto;">&#8617; Restore</button>';
+      html += '<button class="btn bsm bd" onclick="permanentDelete(' + r.id + ')" style="font-size:11px;">&#128465; Purge</button>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  }).catch(function(e) { el.innerHTML = '<div class="empty">Error: ' + e.message + '</div>'; });
+}
+
+function restoreRecord(id, tableName) {
+  if (!confirm('Restore this record back to the app?')) return;
+  dbGet('deleted_records', '?id=eq.' + id).then(function(rows) {
+    if (!rows.length) { toast('Record not found', 'err'); return; }
+    var data = Object.assign({}, rows[0].record_data);
+    delete data.id; // Let Supabase handle id on re-insert
+    return dbPost(tableName, data).then(function() {
+      return dbDel('deleted_records', '?id=eq.' + id);
+    }).then(function() {
+      toast('Restored successfully ✓', 'ok');
+      showRecycleBin();
+      if (tableName === 'inventory') { inv = []; loadInv(); }
+      if (tableName === 'sales') { allSales = []; }
+    });
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
+
+function permanentDelete(id) {
+  if (!confirm('Permanently delete? This CANNOT be undone.')) return;
+  dbDel('deleted_records', '?id=eq.' + id)
+    .then(function() { toast('Permanently deleted', 'ok'); showRecycleBin(); })
+    .catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
+
 function getLedgerRange() {
   var from = document.getElementById('ledger-from').value;
   var to = document.getElementById('ledger-to').value;
@@ -2678,7 +2269,7 @@ function loadLedgerData(allTime) {
   }
 
   Promise.all([
-    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc&deleted_at=is.null'),
+    dbGet('sales', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
     dbGet('deductions', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc'),
     dbGet('transfers', '?date=gte.'+from+'&date=lte.'+to+'&order=id.asc'),
     dbGet('returns', '?date=gte.'+from+'&date=lte.'+to+'&order=date.asc')
@@ -3074,547 +2665,22 @@ function saveEditSale(id) {
 }
 
 function deleteSale(id) {
-  if (!confirm('Delete this sale?\n\nIt will be hidden from the app but recoverable from Supabase if needed.')) return;
-  var now = new Date().toISOString();
-  dbPatch('sales', {deleted_at: now}, '?id=eq.' + id)
-    .then(function() {
-      toast('Sale deleted ✓ (recoverable)', 'ok');
-      allSales = []; allCustomerSales = []; loadHist();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// ── DEBTORS REPORT ──
-// ═══════════════════════════════════════════════════════════════
-
-var _debtorsData = []; // cached for exports
-
-// ═══════════════════════════════════════════════════════════════
-// ── BACKFILL MISSING RECEIPT NUMBERS ──
-// ═══════════════════════════════════════════════════════════════
-
-function backfillReceipts() {
-  if (!confirm('This will generate receipt numbers for all old sales that don't have one.
-
-Proceed?')) return;
-
-  toast('Checking for missing receipts...', 'ok');
-
-  // Fetch all sales without receipt_ref
-  dbGet('sales', '?select=id,date,receipt_ref&order=date.asc&deleted_at=is.null').then(function(sales) {
-    var missing = sales.filter(function(s) { return !s.receipt_ref || s.receipt_ref === ''; });
-    if (!missing.length) {
-      toast('All sales already have receipt numbers ✓', 'ok');
-      return;
-    }
-
-    if (!confirm(missing.length + ' sale' + (missing.length !== 1 ? 's' : '') + ' missing receipt numbers.
-Generate now?')) return;
-
-    // Group by date and assign sequential numbers
-    var byDate = {};
-    missing.forEach(function(s) {
-      if (!byDate[s.date]) byDate[s.date] = [];
-      byDate[s.date].push(s);
-    });
-
-    var ps = [];
-    Object.keys(byDate).sort().forEach(function(date) {
-      byDate[date].forEach(function(s, idx) {
-        var ref = genRefForDate(date, idx + 1);
-        ps.push(dbPatch('sales', {receipt_ref: ref}, '?id=eq.' + s.id));
-      });
-    });
-
-    return Promise.all(ps);
-  }).then(function(results) {
-    if (results) {
-      toast('Generated ' + results.length + ' receipt numbers ✓', 'ok');
-      allSales = []; // Force refresh
-    }
-  }).catch(function(e) {
-    toast('Error: ' + e.message, 'err');
-  });
-}
-
-// Generate a receipt number for a single sale (from history click)
-function generateReceiptForSale(id, event) {
-  if (event) event.stopPropagation();
-  if (!confirm('Generate receipt number for this sale?')) return;
-
   var sale = allSales.find(function(s) { return s.id === id; });
-  if (!sale) { toast('Sale not found', 'err'); return; }
-
-  // Count how many sales already have refs for this date
-  var dateSales = allSales.filter(function(s) { return s.date === sale.date && s.receipt_ref && s.receipt_ref !== ''; });
-  var seq = dateSales.length + 1;
-  var ref = genRefForDate(sale.date, seq);
-
-  dbPatch('sales', {receipt_ref: ref}, '?id=eq.' + id)
-    .then(function() {
-      sale.receipt_ref = ref;
-      toast('Receipt ' + ref + ' generated ✓', 'ok');
-      renderHistList(true); // Refresh the list
-    })
-    .catch(function(e) { toast('Error: ' + e.message, 'err'); });
-}
-
-function showDebtorsReport() {
-  document.getElementById('debtors-report-modal').classList.add('on');
-  document.getElementById('debtors-report-body').innerHTML = '<div class="empty">Loading...</div>';
-  loadDebtorsData();
-}
-
-function loadDebtorsData() {
-  // Fetch all sales to build debtor report
-  dbGet('sales', '?order=date.desc&deleted_at=is.null&limit=1000').then(function(sales) {
-    var custMap = {};
-    sales.forEach(function(s) {
-      var n = s.customer_name || 'Walk-in';
-      if (n === 'Walk-in') return; // skip walk-in for debtors
-      if (!custMap[n]) {
-        custMap[n] = {
-          name: n,
-          sales: [],
-          totalSpent: 0,
-          totalPaid: 0,
-          balance: 0,
-          lastDate: '',
-          firstDate: '',
-          itemCount: 0,
-          visits: 0
-        };
-      }
-      var c = custMap[n];
-      c.sales.push(s);
-      c.totalSpent += s.total || 0;
-      c.totalPaid += s.paid || 0;
-      c.balance += s.balance || 0;
-      c.visits++;
-      c.itemCount += (s.items || []).reduce(function(a, i) { return a + i.qty; }, 0);
-      if (!c.firstDate || s.date < c.firstDate) c.firstDate = s.date;
-      if (!c.lastDate || s.date > c.lastDate) c.lastDate = s.date;
-    });
-    _debtorsData = Object.values(custMap);
-    renderDebtorsReport();
-  }).catch(function(e) {
-    document.getElementById('debtors-report-body').innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
-  });
-}
-
-function renderDebtorsReport() {
-  var filter = document.getElementById('dr-filter').value;
-  var sort = document.getElementById('dr-sort').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-
-  var list = _debtorsData.slice();
-
-  // Filter
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-
-  // Search
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  // Sort
-  list.sort(function(a, b) {
-    if (sort === 'balance-desc') return b.balance - a.balance;
-    if (sort === 'balance-asc') return a.balance - b.balance;
-    if (sort === 'name-asc') return a.name.localeCompare(b.name);
-    if (sort === 'name-desc') return b.name.localeCompare(a.name);
-    if (sort === 'last-date') return (b.lastDate || '').localeCompare(a.lastDate || '');
-    if (sort === 'total-desc') return b.totalSpent - a.totalSpent;
-    return 0;
-  });
-
-  // Summary stats
-  var totalDebt = list.reduce(function(s, c) { return s + Math.max(0, c.balance); }, 0);
-  var debtCount = list.filter(function(c) { return c.balance > 0; }).length;
-  var clearedCount = list.filter(function(c) { return c.balance <= 0; }).length;
-  document.getElementById('dr-total-debt').textContent = fmt(totalDebt);
-  document.getElementById('dr-customer-count').textContent = list.length;
-  document.getElementById('dr-cleared-count').textContent = clearedCount;
-  document.getElementById('dr-subtitle').textContent = 
-    filter === 'debt' ? debtCount + ' customer' + (debtCount !== 1 ? 's' : '') + ' with outstanding balance' :
-    filter === 'cleared' ? clearedCount + ' cleared customer' + (clearedCount !== 1 ? 's' : '') :
-    list.length + ' customer' + (list.length !== 1 ? 's' : '') + ' · ' + fmt(totalDebt) + ' owed';
-
-  var el = document.getElementById('debtors-report-body');
-  if (!list.length) {
-    el.innerHTML = '<div class="empty">No customers match your filter</div>';
-    return;
-  }
-
-  var html = '<div style="padding-bottom:20px;">';
-  list.forEach(function(c) {
-    var hasDebt = c.balance > 0;
-    var daysSinceLast = c.lastDate ? Math.floor((Date.now() - new Date(c.lastDate + 'T12:00:00').getTime()) / 86400000) : null;
-    var aging = '';
-    if (hasDebt && daysSinceLast !== null) {
-      if (daysSinceLast <= 7) aging = '<span style="color:var(--ok);font-size:10px;">● Recent</span>';
-      else if (daysSinceLast <= 30) aging = '<span style="color:#ff9800;font-size:10px;">● 1–4 weeks</span>';
-      else aging = '<span style="color:var(--err);font-size:10px;">● ' + Math.floor(daysSinceLast / 30) + ' month' + (Math.floor(daysSinceLast / 30) > 1 ? 's' : '') + '+</span>';
-    }
-
-    html += '<div style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:14px;margin-bottom:10px;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">';
-    html += '<div style="display:flex;align-items:center;gap:10px;">';
-    html += '<div class="cust-avatar" style="width:36px;height:36px;font-size:14px;">' + c.name.charAt(0).toUpperCase() + '</div>';
-    html += '<div>';
-    html += '<div style="font-weight:700;font-size:15px;">' + escHtml(c.name) + '</div>';
-    html += '<div style="font-size:11px;color:var(--t2);margin-top:2px;">' + c.visits + ' purchase' + (c.visits !== 1 ? 's' : '') + ' · ' + c.itemCount + ' item' + (c.itemCount !== 1 ? 's' : '') + '</div>';
-    html += '</div></div>';
-    html += '<div style="text-align:right;">';
-    if (hasDebt) {
-      html += '<div style="font-size:18px;font-weight:800;color:var(--err);">' + fmt(c.balance) + '</div>';
-      html += '<div style="font-size:10px;color:var(--err);font-weight:700;">OWING</div>';
-    } else {
-      html += '<div style="font-size:18px;font-weight:800;color:var(--ok);">CLEARED</div>';
-    }
-    html += '</div></div>';
-
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">';
-    html += '<div style="background:var(--s3);border-radius:var(--rs);padding:8px;text-align:center;"><div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;">Total Spent</div><div style="font-size:14px;font-weight:800;color:var(--gold);margin-top:2px;">' + fmt(c.totalSpent) + '</div></div>';
-    html += '<div style="background:var(--s3);border-radius:var(--rs);padding:8px;text-align:center;"><div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;">Total Paid</div><div style="font-size:14px;font-weight:800;color:var(--ok);margin-top:2px;">' + fmt(c.totalPaid) + '</div></div>';
-    html += '<div style="background:var(--s3);border-radius:var(--rs);padding:8px;text-align:center;"><div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;">Last Purchase</div><div style="font-size:14px;font-weight:800;color:var(--t);margin-top:2px;">' + (c.lastDate || '—') + '</div></div>';
-    html += '</div>';
-
-    if (hasDebt) {
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">';
-      html += '<div style="font-size:11px;color:var(--t2);">First: ' + (c.firstDate || '—') + ' · Last: ' + (c.lastDate || '—') + '</div>';
-      html += aging;
-      html += '</div>';
-
-      // Show individual unpaid sales
-      var unpaid = c.sales.filter(function(s) { return (s.balance || 0) > 0; });
-      if (unpaid.length > 0) {
-        html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--b3);">';
-        html += '<div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px;">Unpaid Sales</div>';
-        unpaid.forEach(function(s) {
-          var items = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
-          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--b3);font-size:12px;">';
-          html += '<div style="flex:1;min-width:0;"><div style="font-weight:600;">' + s.date + '</div><div style="color:var(--t2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + items + '</div></div>';
-          html += '<div style="text-align:right;flex-shrink:0;margin-left:8px;"><div style="font-weight:700;color:var(--err);">' + fmt(s.balance) + '</div><div style="font-size:10px;color:var(--t2);">of ' + fmt(s.total) + '</div></div>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
-    }
-    html += '</div>';
-  });
-  html += '</div>';
-  el.innerHTML = html;
-}
-
-// ── Export Debtors to CSV ──
-function exportDebtorsCSV() {
-  var filter = document.getElementById('dr-filter').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-  var list = _debtorsData.slice();
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  var rows = [['Customer Name','Total Spent (KES)','Total Paid (KES)','Balance (KES)','Visits','Items','First Purchase','Last Purchase','Status']];
-  list.forEach(function(c) {
-    rows.push([
-      c.name,
-      c.totalSpent,
-      c.totalPaid,
-      c.balance,
-      c.visits,
-      c.itemCount,
-      c.firstDate || '',
-      c.lastDate || '',
-      c.balance > 0 ? 'OWING' : 'CLEARED'
-    ]);
-  });
-
-  var csv = rows.map(function(r) {
-    return r.map(function(v) {
-      var val = String(v).replace(/"/g, '""');
-      return val.indexOf(',') >= 0 || val.indexOf('"') >= 0 || val.indexOf('
-') >= 0 ? '"' + val + '"' : val;
-    }).join(',');
-  }).join('
-');
-
-  var blob = new Blob(['﻿' + csv], {type: 'text/csv;charset=utf-8;'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = 'LizLuxe-Debtors-' + new Date().toISOString().slice(0, 10) + '.csv';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast('Exported ' + list.length + ' customers to CSV', 'ok');
-}
-
-// ── Export Debtors to Excel (SpreadsheetML) ──
-function exportDebtorsExcel() {
-  var filter = document.getElementById('dr-filter').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-  var list = _debtorsData.slice();
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  var totalDebt = list.reduce(function(s, c) { return s + Math.max(0, c.balance); }, 0);
-  var debtCount = list.filter(function(c) { return c.balance > 0; }).length;
-
-  // Sheet 1: Summary
-  var s1 = [
-    ['LIZ LUXE — DEBTORS REPORT'],
-    ['Generated: ' + new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'})],
-    [],
-    ['Summary'],
-    ['Total Customers', list.length],
-    ['Customers with Balance', debtCount],
-    ['Total Amount Owed (KES)', totalDebt],
-    [],
-    ['Customer Name','Total Spent (KES)','Total Paid (KES)','Balance (KES)','Visits','Items','First Purchase','Last Purchase','Status']
-  ];
-  list.forEach(function(c) {
-    s1.push([c.name, c.totalSpent, c.totalPaid, c.balance, c.visits, c.itemCount, c.firstDate || '', c.lastDate || '', c.balance > 0 ? 'OWING' : 'CLEARED']);
-  });
-
-  // Sheet 2: Detailed Unpaid Sales
-  var s2 = [
-    ['LIZ LUXE — UNPAID SALES DETAIL'],
-    ['Generated: ' + new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'})],
-    [],
-    ['Customer','Date','Receipt Ref','Items','Total (KES)','Paid (KES)','Balance (KES)','Method']
-  ];
-  list.forEach(function(c) {
-    var unpaid = c.sales.filter(function(s) { return (s.balance || 0) > 0; });
-    unpaid.forEach(function(s) {
-      var items = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(' | ');
-      s2.push([c.name, s.date, s.receipt_ref || '', items, s.total || 0, s.paid || 0, s.balance || 0, s.method || '']);
-    });
-  });
-
-  function escXml(v) {
-    if (v === null || v === undefined) return '';
-    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  function buildWorkbook(sheets) {
-    var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>';
-    xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
-    xml += '<Styles>';
-    xml += '<Style ss:ID="H"><Font ss:Bold="1" ss:Size="13" ss:Color="#C9972A"/></Style>';
-    xml += '<Style ss:ID="B"><Font ss:Bold="1"/></Style>';
-    xml += '<Style ss:ID="T"><Font ss:Bold="1" ss:Size="11"/></Style>';
-    xml += '<Style ss:ID="RED"><Font ss:Bold="1" ss:Color="#C62828"/></Style>';
-    xml += '<Style ss:ID="GREEN"><Font ss:Color="#2E7D32"/></Style>';
-    xml += '</Styles>';
-    sheets.forEach(function(s) {
-      xml += '<Worksheet ss:Name="' + escXml(s.name) + '"><Table>';
-      s.rows.forEach(function(row, ri) {
-        if (!row || !row.length) { xml += '<Row></Row>'; return; }
-        xml += '<Row>';
-        row.forEach(function(cell) {
-          var styleId = '';
-          if (ri === 0) styleId = ' ss:StyleID="H"';
-          else if (ri === 3 && s.name.indexOf('Summary') >= 0) styleId = ' ss:StyleID="B"';
-          else if (ri === 8 && s.name.indexOf('Summary') >= 0) styleId = ' ss:StyleID="T"';
-          else if (ri === 3 && s.name.indexOf('Detail') >= 0) styleId = ' ss:StyleID="T"';
-          var val = (cell === null || cell === undefined) ? '' : cell;
-          var type = (typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)) && val.trim() !== '')) ? 'Number' : 'String';
-          if (type === 'Number' && val === '') type = 'String';
-          xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(val) + '</Data></Cell>';
-        });
-        xml += '</Row>';
-      });
-      xml += '</Table></Worksheet>';
-    });
-    xml += '</Workbook>';
-    return xml;
-  }
-
-  var workbook = buildWorkbook([
-    {name: 'Debtors Summary', rows: s1},
-    {name: 'Unpaid Detail', rows: s2}
-  ]);
-
-  var blob = new Blob([workbook], {type: 'application/vnd.ms-excel;charset=utf-8'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = 'LizLuxe-Debtors-' + new Date().toISOString().slice(0, 10) + '.xls';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast('Exported ' + list.length + ' customers to Excel', 'ok');
-}
-
-// ── Export Debtors to PDF ──
-function exportDebtorsPDF() {
-  var filter = document.getElementById('dr-filter').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-  var list = _debtorsData.slice();
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  var totalDebt = list.reduce(function(s, c) { return s + Math.max(0, c.balance); }, 0);
-  var debtCount = list.filter(function(c) { return c.balance > 0; }).length;
-
-  // Check if jsPDF is available
-  if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
-    toast('PDF library not loaded. Please check your connection.', 'err');
-    return;
-  }
-
-  var doc = new window.jspdf.jsPDF('p', 'mm', 'a4');
-  var pageW = doc.internal.pageSize.getWidth();
-  var pageH = doc.internal.pageSize.getHeight();
-  var margin = 14;
-  var y = 20;
-
-  // Header
-  doc.setFillColor(10, 10, 10);
-  doc.rect(0, 0, pageW, pageH, 'F');
-
-  doc.setTextColor(201, 151, 42);
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('LIZ LUXE', pageW / 2, y, {align: 'center'});
-  y += 8;
-  doc.setFontSize(10);
-  doc.setTextColor(138, 127, 106);
-  doc.setFont('helvetica', 'normal');
-  doc.text('DEBTORS REPORT', pageW / 2, y, {align: 'center'});
-  y += 6;
-  doc.setFontSize(9);
-  doc.text(new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'}), pageW / 2, y, {align: 'center'});
-  y += 12;
-
-  // Summary box
-  doc.setDrawColor(201, 151, 42);
-  doc.setLineWidth(0.3);
-  doc.setFillColor(20, 20, 20);
-  doc.roundedRect(margin, y, pageW - margin * 2, 22, 2, 2, 'FD');
-  doc.setFontSize(10);
-  doc.setTextColor(240, 234, 214);
-  doc.text('Total Customers: ' + list.length, margin + 5, y + 8);
-  doc.text('With Balance: ' + debtCount, margin + 5, y + 16);
-  doc.setTextColor(224, 96, 96);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Total Owed: KES ' + Math.round(totalDebt).toLocaleString(), pageW - margin - 5, y + 12, {align: 'right'});
-  doc.setFont('helvetica', 'normal');
-  y += 28;
-
-  // Table
-  var tableData = list.map(function(c) {
-    return [
-      c.name,
-      'KES ' + Math.round(c.totalSpent).toLocaleString(),
-      'KES ' + Math.round(c.totalPaid).toLocaleString(),
-      'KES ' + Math.round(c.balance).toLocaleString(),
-      c.balance > 0 ? 'OWING' : 'CLEARED',
-      c.lastDate || '—'
-    ];
-  });
-
-  if (typeof doc.autoTable === 'function') {
-    doc.autoTable({
-      startY: y,
-      head: [['Customer', 'Total Spent', 'Total Paid', 'Balance', 'Status', 'Last Purchase']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: {
-        fillColor: [201, 151, 42],
-        textColor: [10, 10, 10],
-        fontStyle: 'bold',
-        fontSize: 9
-      },
-      bodyStyles: {
-        fillColor: [20, 20, 20],
-        textColor: [240, 234, 214],
-        fontSize: 8
-      },
-      alternateRowStyles: {
-        fillColor: [28, 28, 28]
-      },
-      styles: {
-        lineColor: [201, 151, 42],
-        lineWidth: 0.2,
-        cellPadding: 2
-      },
-      columnStyles: {
-        3: { textColor: function(cell) { return cell.raw.indexOf('0') === 0 && cell.raw === 'KES 0' ? [240, 234, 214] : [224, 96, 96]; } },
-        4: { textColor: function(cell) { return cell.raw === 'OWING' ? [224, 96, 96] : [123, 201, 80]; } }
-      },
-      margin: {left: margin, right: margin},
-      didDrawPage: function(data) {
-        doc.setFillColor(10, 10, 10);
-        doc.rect(0, 0, pageW, pageH, 'F');
-      }
-    });
-  } else {
-    // Fallback if autoTable not loaded
-    doc.setTextColor(240, 234, 214);
-    doc.setFontSize(10);
-    doc.text('PDF table plugin not available. Please refresh and try again.', margin, y);
-  }
-
-  // Footer
-  var pageCount = doc.internal.getNumberOfPages();
-  for (var i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Liz Luxe POS · Page ' + i + ' of ' + pageCount, pageW / 2, pageH - 8, {align: 'center'});
-  }
-
-  doc.save('LizLuxe-Debtors-' + new Date().toISOString().slice(0, 10) + '.pdf');
-  toast('Exported ' + list.length + ' customers to PDF', 'ok');
-}
-
-// ── Share Debtors via WhatsApp ──
-function shareDebtorsWhatsApp() {
-  var filter = document.getElementById('dr-filter').value;
-  var q = (document.getElementById('dr-search').value || '').toLowerCase();
-  var list = _debtorsData.slice();
-  if (filter === 'debt') list = list.filter(function(c) { return c.balance > 0; });
-  else if (filter === 'cleared') list = list.filter(function(c) { return c.balance <= 0; });
-  if (q) list = list.filter(function(c) { return c.name.toLowerCase().indexOf(q) >= 0; });
-
-  var totalDebt = list.reduce(function(s, c) { return s + Math.max(0, c.balance); }, 0);
-  var debtors = list.filter(function(c) { return c.balance > 0; });
-
-  var d = new Date();
-  var dateStr = d.toLocaleDateString('en-KE', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
-  var msg = '&#128100; *LIZ LUXE — DEBTORS REPORT*
-&#128197; ' + dateStr + '
-
-';
-  msg += '*Summary*
-';
-  msg += '&#8226; Total Customers: ' + list.length + '
-';
-  msg += '&#8226; With Balance: ' + debtors.length + '
-';
-  msg += '&#8226; Total Owed: KES ' + Math.round(totalDebt).toLocaleString() + '
-
-';
-
-  if (debtors.length > 0) {
-    msg += '*Outstanding Balances*
-';
-    debtors.slice(0, 15).forEach(function(c) {
-      msg += '&#8226; ' + c.name + ': KES ' + Math.round(c.balance).toLocaleString() + '
-';
-    });
-    if (debtors.length > 15) msg += '...and ' + (debtors.length - 15) + ' more
-';
-  }
-
-  msg += '
-&#10022; _Liz Luxe POS_';
-  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+  if (!sale) return;
+  var reason = prompt('Reason for deleting this sale? (optional)', '');
+  if (reason === null) return;
+  if (!confirm('Delete sale for ' + sale.customer_name + '?\n\nA backup will be saved to the Recycle Bin.')) return;
+  dbPost('deleted_records', {
+    table_name: 'sales',
+    record_id: sale.id,
+    record_data: sale,
+    reason: reason || ''
+  }).then(function() {
+    return dbDel('sales', '?id=eq.' + id);
+  }).then(function() {
+    toast('Sale deleted ✓ — saved to Recycle Bin', 'ok');
+    allSales = []; allCustomerSales = []; loadHist();
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
 // ── Customers Tab ──
@@ -3634,7 +2700,7 @@ function loadCustomers() {
 
 function fetchCustomerPage(reset) {
   var offset = custPage * custPageSize;
-  dbGet('sales', '?order=date.desc&offset=' + offset + '&limit=' + custPageSize + '&deleted_at=is.null').then(function(sales) {
+  dbGet('sales', '?order=date.desc&offset=' + offset + '&limit=' + custPageSize + '').then(function(sales) {
     if (reset) allCustomerSales = sales;
     else allCustomerSales = allCustomerSales.concat(sales);
     custHasMore = sales.length === custPageSize;
@@ -3902,7 +2968,7 @@ function renderFin() {
   var now = new Date();
 
   // Build server-side date filter for selected period
-  var salesQuery = '?select=paid,items,balance,date,method,payment_log,split_details&deleted_at=is.null';
+  var salesQuery = '?select=paid,items,balance,date,method,payment_log,split_details';
   var dedQuery = '?order=created_at.desc';
   if (finDateFilter === 'today') {
     salesQuery += '&date=eq.' + today;
@@ -3923,7 +2989,7 @@ function renderFin() {
   Promise.all([
     dbGet('sales', salesQuery),
     dbGet('deductions', dedQuery),
-    finDateFilter !== 'today' ? dbGet('sales', '?select=paid,items,date&date=eq.' + today + '&deleted_at=is.null') : Promise.resolve(null)
+    finDateFilter !== 'today' ? dbGet('sales', '?select=paid,items,date&date=eq.' + today + '') : Promise.resolve(null)
   ]).then(function(r) {
       var allSalesData = r[0], deds = r[1];
       // Daily summary card
@@ -4050,7 +3116,7 @@ function addInjection() {
 
 function exportCSV() {
   toast('Preparing export...', 'ok');
-  dbGet('sales', '?order=date.desc&deleted_at=is.null').then(function(sales) {
+  dbGet('sales', '?order=date.desc').then(function(sales) {
     if (!sales.length) { toast('No sales to export', 'err'); return; }
     var rows = [['Receipt Ref','Date','Customer','Items','Total','Paid','Balance','Method','Split Details']];
     sales.forEach(function(s) {
@@ -4305,53 +3371,7 @@ function shareAsUrl(canvas) {
     win.document.write('<html><body style="margin:0;background:#111;">'
       + '<p style="color:#fff;font-family:sans-serif;padding:12px;font-size:13px;">Long-press the image to save or share</p>'
       + '<img src="' + url + '" style="width:100%;max-width:480px;display:block;margin:0 auto;">'
-      + '
-<!-- ══ DEBTORS REPORT MODAL ══ -->
-<div class="edit-items-modal" id="debtors-report-modal">
-  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <button onclick="document.getElementById('debtors-report-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
-      <div>
-        <div style="font-weight:700;font-size:16px;">&#128100; Debtors Report</div>
-        <div style="font-size:11px;color:var(--t2);" id="dr-subtitle">All customers with outstanding balances</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:6px;">
-      <button onclick="exportDebtorsCSV()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:6px 10px;font-size:11px;color:var(--gold);cursor:pointer;font-weight:700;">&#128229; CSV</button>
-      <button onclick="exportDebtorsExcel()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:6px 10px;font-size:11px;color:var(--gold);cursor:pointer;font-weight:700;">&#128451; Excel</button>
-      <button onclick="exportDebtorsPDF()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:6px 10px;font-size:11px;color:var(--err);cursor:pointer;font-weight:700;">&#128196; PDF</button>
-      <button onclick="shareDebtorsWhatsApp()" style="background:var(--s3);border:1px solid rgba(37,211,102,.3);border-radius:var(--rs);padding:6px 10px;font-size:11px;color:#25d366;cursor:pointer;font-weight:700;">&#128232; WA</button>
-    </div>
-  </div>
-  <div style="padding:14px 16px;border-bottom:1px solid var(--b);background:var(--s2);flex-shrink:0;">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <select id="dr-filter" onchange="renderDebtorsReport()" style="flex:1;min-width:120px;padding:8px 10px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);color:var(--t);font-family:inherit;">
-        <option value="all">All Customers</option>
-        <option value="debt" selected>Has Balance Only</option>
-        <option value="cleared">Cleared (No Balance)</option>
-      </select>
-      <select id="dr-sort" onchange="renderDebtorsReport()" style="flex:1;min-width:120px;padding:8px 10px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);color:var(--t);font-family:inherit;">
-        <option value="balance-desc">Highest Balance First</option>
-        <option value="balance-asc">Lowest Balance First</option>
-        <option value="name-asc">Name A–Z</option>
-        <option value="name-desc">Name Z–A</option>
-        <option value="last-date">Last Purchase Date</option>
-        <option value="total-desc">Total Spent (High–Low)</option>
-      </select>
-      <input type="text" id="dr-search" placeholder="&#128269; Search customer..." oninput="renderDebtorsReport()" style="flex:2;min-width:140px;padding:8px 10px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);color:var(--t);font-family:inherit;">
-    </div>
-    <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap;">
-      <div style="font-size:12px;color:var(--t2);"><span style="color:var(--err);font-weight:800;" id="dr-total-debt">KES 0</span> total owed</div>
-      <div style="font-size:12px;color:var(--t2);"><span style="color:var(--gold);font-weight:800;" id="dr-customer-count">0</span> customers</div>
-      <div style="font-size:12px;color:var(--t2);"><span style="color:var(--ok);font-weight:800;" id="dr-cleared-count">0</span> cleared</div>
-    </div>
-  </div>
-  <div class="edit-items-body" id="debtors-report-body">
-    <div class="empty">Loading debtors data...</div>
-  </div>
-</div>
-
-</body></html>');
+      + '</body></html>');
   } else {
     fallbackCopy(lastReceiptText);
     toast('Copied as text instead', 'ok');
@@ -4615,51 +3635,5 @@ window.addEventListener('appinstalled', function() {
   toast('Liz Luxe POS installed!', 'ok');
 });
 </script>
-
-<!-- ══ DEBTORS REPORT MODAL ══ -->
-<div class="edit-items-modal" id="debtors-report-modal">
-  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <button onclick="document.getElementById('debtors-report-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
-      <div>
-        <div style="font-weight:700;font-size:16px;">&#128100; Debtors Report</div>
-        <div style="font-size:11px;color:var(--t2);" id="dr-subtitle">All customers with outstanding balances</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:6px;">
-      <button onclick="exportDebtorsCSV()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:6px 10px;font-size:11px;color:var(--gold);cursor:pointer;font-weight:700;">&#128229; CSV</button>
-      <button onclick="exportDebtorsExcel()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:6px 10px;font-size:11px;color:var(--gold);cursor:pointer;font-weight:700;">&#128451; Excel</button>
-      <button onclick="exportDebtorsPDF()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:6px 10px;font-size:11px;color:var(--err);cursor:pointer;font-weight:700;">&#128196; PDF</button>
-      <button onclick="shareDebtorsWhatsApp()" style="background:var(--s3);border:1px solid rgba(37,211,102,.3);border-radius:var(--rs);padding:6px 10px;font-size:11px;color:#25d366;cursor:pointer;font-weight:700;">&#128232; WA</button>
-    </div>
-  </div>
-  <div style="padding:14px 16px;border-bottom:1px solid var(--b);background:var(--s2);flex-shrink:0;">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <select id="dr-filter" onchange="renderDebtorsReport()" style="flex:1;min-width:120px;padding:8px 10px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);color:var(--t);font-family:inherit;">
-        <option value="all">All Customers</option>
-        <option value="debt" selected>Has Balance Only</option>
-        <option value="cleared">Cleared (No Balance)</option>
-      </select>
-      <select id="dr-sort" onchange="renderDebtorsReport()" style="flex:1;min-width:120px;padding:8px 10px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);color:var(--t);font-family:inherit;">
-        <option value="balance-desc">Highest Balance First</option>
-        <option value="balance-asc">Lowest Balance First</option>
-        <option value="name-asc">Name A–Z</option>
-        <option value="name-desc">Name Z–A</option>
-        <option value="last-date">Last Purchase Date</option>
-        <option value="total-desc">Total Spent (High–Low)</option>
-      </select>
-      <input type="text" id="dr-search" placeholder="&#128269; Search customer..." oninput="renderDebtorsReport()" style="flex:2;min-width:140px;padding:8px 10px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);color:var(--t);font-family:inherit;">
-    </div>
-    <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap;">
-      <div style="font-size:12px;color:var(--t2);"><span style="color:var(--err);font-weight:800;" id="dr-total-debt">KES 0</span> total owed</div>
-      <div style="font-size:12px;color:var(--t2);"><span style="color:var(--gold);font-weight:800;" id="dr-customer-count">0</span> customers</div>
-      <div style="font-size:12px;color:var(--t2);"><span style="color:var(--ok);font-weight:800;" id="dr-cleared-count">0</span> cleared</div>
-    </div>
-  </div>
-  <div class="edit-items-body" id="debtors-report-body">
-    <div class="empty">Loading debtors data...</div>
-  </div>
-</div>
-
 </body>
 </html>
