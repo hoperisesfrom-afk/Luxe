@@ -68,20 +68,37 @@ var inv = [], activeCat = 'All';
 function get(q) {
   return fetch(SB + '/inventory' + (q||''), {
     headers: {'apikey': ANON_KEY, 'Authorization': 'Bearer ' + ANON_KEY}
-  }).then(function(r){return r.json()});
+  }).then(function(r){
+    if (!r.ok) {
+      return r.text().then(function(t){
+        try { var j = JSON.parse(t); return Promise.reject(new Error(j.message || j.error_description || 'HTTP ' + r.status)); }
+        catch(e) { return Promise.reject(new Error('HTTP ' + r.status + ': ' + t.slice(0,100))); }
+      });
+    }
+    return r.json();
+  });
 }
 
 function load() {
   document.getElementById('catalog').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   get('?order=name.asc').then(function(data) {
+    // Check if data is an error response
+    if (data && data.message) {
+      throw new Error(data.message);
+    }
+    if (!Array.isArray(data)) {
+      throw new Error('Unexpected response from server');
+    }
     inv = data.filter(function(i){return i.remaining > 0;});
     document.getElementById('status').textContent = inv.length + ' items available · Updated ' + new Date().toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
     document.getElementById('status').classList.add('on');
     buildPills();
     render();
-  }).catch(function(){
-    document.getElementById('status').textContent = 'Could not load — try again';
-    document.getElementById('catalog').innerHTML = '<div class="empty">Failed to load catalog. Check your connection.</div>';
+  }).catch(function(e){
+    console.error('Shop load error:', e);
+    document.getElementById('status').textContent = 'Error loading catalog';
+    document.getElementById('status').style.color = 'var(--err)';
+    document.getElementById('catalog').innerHTML = '<div class="empty" style="padding:20px;"><div style="font-size:14px;color:var(--err);margin-bottom:8px;">⚠ Could not load items</div><div style="font-size:12px;color:var(--t2);">' + (e.message || 'Check your connection and try again') + '</div><div style="margin-top:12px;font-size:11px;color:var(--t3);">If this persists, the catalog may need access permissions updated.</div></div>';
   });
 }
 
