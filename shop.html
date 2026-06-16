@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Liz Luxe — Shop</title>
+<meta name="theme-color" content="#0a0a0a">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#f0ead6;font-size:14px}
+:root{--gold:#C9972A;--gold-d:#a67c1e;--gold-bg:rgba(201,151,42,0.13);--s:#141414;--s2:#1c1c1c;--s3:#242424;--b:rgba(201,151,42,0.2);--t:#f0ead6;--t2:#8a7f6a;--t3:#4a4030;--ok:#7bc950;--err:#e06060;--r:14px;--rs:10px}
+.wrap{max-width:480px;margin:0 auto;padding:0 14px 40px}
+.header{text-align:center;padding:32px 20px 24px;border-bottom:1px solid var(--b);margin-bottom:20px}
+.logo{font-size:28px;font-weight:800;color:var(--gold);font-style:italic;letter-spacing:.5px}
+.tag{font-size:11px;color:var(--t2);letter-spacing:3px;text-transform:uppercase;margin-top:4px}
+.status{font-size:12px;color:var(--t2);margin-top:12px;padding:10px 16px;background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);display:inline-block}
+.status.on{color:var(--ok);border-color:rgba(123,201,80,0.3)}
+.search{width:100%;padding:12px 14px;font-size:14px;border:1px solid var(--b);border-radius:var(--rs);background:var(--s2);color:var(--t);outline:none;margin-bottom:16px}
+.search:focus{border-color:var(--gold)}
+.pills{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:4px;scrollbar-width:none}
+.pills::-webkit-scrollbar{display:none}
+.pill{flex-shrink:0;padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;border:1px solid var(--b);background:var(--s2);color:var(--t2)}
+.pill.active{border-color:var(--gold);background:var(--gold);color:#0a0a0a}
+.cat-title{font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin:20px 0 10px;padding-left:4px}
+.item{background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.item-name{font-size:15px;font-weight:700;color:var(--t);margin-bottom:4px}
+.item-meta{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.item-price{font-size:18px;font-weight:800;color:var(--gold)}
+.item-stock{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px}
+.in-stock{background:rgba(55,110,35,0.22);color:var(--ok);border:1px solid rgba(123,201,80,0.25)}
+.low-stock{background:var(--err-bg);color:var(--err);border:1px solid rgba(224,96,96,0.3)}
+.out-stock{background:var(--s3);color:var(--t3);border:1px solid var(--b)}
+.wa-btn{display:block;width:100%;padding:14px;background:#25d366;color:#fff;border:none;border-radius:var(--rs);font-size:15px;font-weight:700;text-align:center;text-decoration:none;margin-top:24px;cursor:pointer}
+.wa-btn:active{opacity:.9}
+.empty{text-align:center;padding:40px;color:var(--t2);font-size:13px}
+.skel{background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:14px;margin-bottom:10px;height:80px;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.footer{text-align:center;padding:24px 20px;color:var(--t3);font-size:12px;border-top:1px solid var(--b);margin-top:24px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="logo">Liz Luxe</div>
+    <div class="tag">Luxury · Beauty · Style</div>
+    <div class="status" id="status">Loading catalog...</div>
+  </div>
+
+  <input class="search" id="search" placeholder="🔍 Search items..." oninput="render()">
+  <div class="pills" id="pills"></div>
+  <div id="catalog"></div>
+
+  <a class="wa-btn" id="wa-btn" href="https://wa.me/254703423367?text=Hi%20Liz%20Luxe%2C%20I%20saw%20your%20catalog%20and%20I%27m%20interested%20in..." target="_blank">
+    📱 Order via WhatsApp
+  </a>
+
+  <div class="footer">
+    Prices in KES · Stock updated daily<br>
+    <span style="color:var(--t2)">Liz Luxe POS — Private Catalog</span>
+  </div>
+</div>
+
+<script>
+var SB = 'https://atydgofseradfblzrdbn.supabase.co/rest/v1';
+var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0eWRnb2ZzZXJhZGZibHpyZGJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2ODc1NzgsImV4cCI6MjA5MzI2MzU3OH0.f9Slh4NyLDKDJ1nUQJ35GJDIKPZayhLyK9GFXSIihBc';
+var inv = [], activeCat = 'All';
+
+function get(q) {
+  return fetch(SB + '/inventory' + (q||''), {
+    headers: {'apikey': ANON_KEY, 'Authorization': 'Bearer ' + ANON_KEY}
+  }).then(function(r){return r.json()});
+}
+
+function load() {
+  document.getElementById('catalog').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  get('?order=name.asc').then(function(data) {
+    inv = data.filter(function(i){return i.remaining > 0;});
+    document.getElementById('status').textContent = inv.length + ' items available · Updated ' + new Date().toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('status').classList.add('on');
+    buildPills();
+    render();
+  }).catch(function(){
+    document.getElementById('status').textContent = 'Could not load — try again';
+    document.getElementById('catalog').innerHTML = '<div class="empty">Failed to load catalog. Check your connection.</div>';
+  });
+}
+
+function buildPills() {
+  var seen = {}; var cats = ['All'];
+  inv.forEach(function(i){var c=i.category||'Other';if(!seen[c]){seen[c]=1;cats.push(c);}});
+  cats.sort(function(a,b){return a==='All'?-1:b==='All'?1:a.localeCompare(b);});
+  var html = '';
+  cats.forEach(function(c){
+    var act = c===activeCat?' active':'';
+    html += '<button class="pill'+act+'" onclick="setCat(''+c+'')">'+c+'</button>';
+  });
+  document.getElementById('pills').innerHTML = html;
+}
+
+function setCat(c){activeCat=c;buildPills();render();}
+
+function render() {
+  var q = document.getElementById('search').value.toLowerCase();
+  var list = inv.filter(function(i){
+    var mq = !q || i.name.toLowerCase().indexOf(q)>=0 || (i.category||'').toLowerCase().indexOf(q)>=0;
+    var mc = activeCat==='All' || (i.category||'Other')===activeCat;
+    return mq && mc;
+  });
+  var el = document.getElementById('catalog');
+  if(!list.length){el.innerHTML='<div class="empty">No items found.</div>';return;}
+
+  var byCat = {};
+  list.forEach(function(i){
+    var c = i.category || 'Other';
+    if(!byCat[c]) byCat[c] = [];
+    byCat[c].push(i);
+  });
+
+  var html = '';
+  Object.keys(byCat).sort().forEach(function(c){
+    html += '<div class="cat-title">'+c+'</div>';
+    byCat[c].forEach(function(i){
+      var low = i.remaining < 3;
+      var stockClass = i.remaining === 0 ? 'out-stock' : low ? 'low-stock' : 'in-stock';
+      var stockText = i.remaining === 0 ? 'Out of stock' : low ? 'Only ' + i.remaining + ' left' : i.remaining + ' in stock';
+      html += '<div class="item">';
+      html += '<div class="item-name">'+i.name+'</div>';
+      html += '<div style="font-size:12px;color:var(--t2);">'+(i.category||'Other')+'</div>';
+      html += '<div class="item-meta">';
+      html += '<span class="item-price">KES ' + Math.round(i.selling_price).toLocaleString() + '</span>';
+      html += '<span class="item-stock '+stockClass+'">'+stockText+'</span>';
+      html += '</div></div>';
+    });
+  });
+  el.innerHTML = html;
+}
+
+load();
+</script>
+</body>
+</html>

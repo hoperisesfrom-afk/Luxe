@@ -390,7 +390,29 @@ select option{background:#1c1c1c}
           <div><label>Date</label><input id="sale-date" type="date"></div>
         </div>
       </div>
-      <div class="card">
+            <div class="card" id="quick-sale-card">
+        <div class="ct" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>⚡ Quick Sale</span>
+          <button class="btn bsm2" onclick="toggleQuickSale()" id="quick-toggle-btn" style="width:auto;background:var(--gold-bg);color:var(--gold);border-color:transparent;">Show</button>
+        </div>
+        <div id="quick-sale-form" style="display:none;">
+          <div style="font-size:12px;color:var(--t2);margin-bottom:10px;">
+            Paste a WhatsApp message like: <em style="color:var(--gold);">"Simon 1 Chain 250 mpesa"</em>
+          </div>
+          <div class="g12">
+            <textarea id="quick-input" placeholder="Paste WhatsApp message here..." 
+              style="width:100%;padding:11px 13px;font-size:14px;border:1px solid var(--b);border-radius:var(--rs);background:var(--s3);color:var(--t);outline:none;min-height:60px;resize:vertical;font-family:inherit;"
+              oninput="parseQuickSale(this.value)"></textarea>
+          </div>
+          <div id="quick-preview" style="display:none;margin-top:10px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:12px;">
+            <div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:8px;">Parsed Sale</div>
+            <div id="quick-preview-body" style="font-size:13px;"></div>
+          </div>
+          <button class="btn bp" id="quick-sale-btn" onclick="submitQuickSale()" style="margin-top:10px;" disabled>Complete Quick Sale</button>
+        </div>
+      </div>
+
+<div class="card">
         <div class="ct" style="display:flex;justify-content:space-between;align-items:center;"><span>Add Items</span><button class="btn bsm2 bd" id="clear-cart-btn" onclick="clearCart()" style="display:none;width:auto;">Clear All</button></div>
         <div class="iswrap">
           <input id="item-search" placeholder="Search item to add..." oninput="searchItems(this.value)">
@@ -976,8 +998,13 @@ function updateDiscount() {
 }
 
 function genRef() {
-  var n = Math.floor(10000 + Math.random() * 90000);
-  return 'LX-' + n;
+  // Date-sequential: LX-YYYYMMDD-NNN (resets daily, no collision risk)
+  var now = new Date();
+  var dateStr = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0');
+  var key = 'll_ref_' + dateStr;
+  var seq = parseInt(localStorage.getItem(key) || '0') + 1;
+  localStorage.setItem(key, String(seq));
+  return 'LX-' + dateStr + '-' + String(seq).padStart(3, '0');
 }
 function fmt(n) { return 'KES ' + Math.round(n || 0).toLocaleString(); }
 
@@ -2122,21 +2149,222 @@ function showDebtorsReport() {
 function shareDebtorsReport() {
   var d = window._debtorsData;
   if (!d) { toast('Open report first', 'err'); return; }
-  var today = new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'});
-  var msg = '📋 *LIZ LUXE — DEBTORS REPORT*\n📅 ' + today + '\n\n';
-  msg += '💰 Total Outstanding: KES ' + Math.round(d.totalOwed).toLocaleString() + '\n';
-  msg += '👥 Debtors: ' + Object.keys(d.map).length + '\n\n';
-  Object.keys(d.map).sort().forEach(function(name) {
-    var sales = d.map[name];
-    var owed = sales.reduce(function(a, s) { return a + (s.balance || 0); }, 0);
-    msg += '• ' + name + ': KES ' + Math.round(owed).toLocaleString() + '\n';
-    sales.forEach(function(s) {
-      var its = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
-      msg += '  ↳ ' + s.date + ' · ' + its + ' · Owes ' + fmt(s.balance) + '\n';
+
+  try {
+    // Sort debtors by most recent purchase date (descending)
+    var keys = Object.keys(d.map).sort(function(a, b) {
+      var maxA = d.map[a].reduce(function(max, s) { return s.date > max ? s.date : max; }, '');
+      var maxB = d.map[b].reduce(function(max, s) { return s.date > max ? s.date : max; }, '');
+      return maxB.localeCompare(maxA);
     });
-  });
-  msg += '\n✨ _Liz Luxe POS_';
-  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+
+    var today = new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'});
+    var totalOwed = d.totalOwed;
+    var debtorCount = keys.length;
+
+    // Canvas setup
+    var W = 800, pad = 36, font = "'Segoe UI', -apple-system, sans-serif";
+    var GOLD = '#C9972A', GOLD_DIM = '#8a6820', WHITE = '#f0ead6', GREY = '#8a7f6a';
+    var BG = '#0f0f0f', ERR = '#e06060', ERR_BG = 'rgba(160,35,35,0.22)';
+    var BORDER = 'rgba(201,151,42,0.2)';
+
+    var headerH = 140;
+    var tableHeaderH = 44;
+    var rowH = 64;
+    var footerH = 60;
+    var maxRows = 50;
+    var actualRows = Math.min(keys.length, maxRows);
+    var truncated = keys.length > maxRows;
+    var totalH = headerH + tableHeaderH + (actualRows * rowH) + footerH + (pad * 2);
+    if (truncated) totalH += 30;
+
+    var canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = totalH;
+    var ctx = canvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, totalH);
+
+    // Outer gold border
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(6, 6, W-12, totalH-12);
+
+    // Inner subtle border
+    ctx.strokeStyle = 'rgba(201,151,42,0.15)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(12, 12, W-24, totalH-24);
+
+    // Saw-tooth decoration
+    var sawSize = 10;
+    ctx.fillStyle = '#050505';
+    for (var xi = 0; xi < W; xi += sawSize * 2) {
+      ctx.beginPath(); ctx.moveTo(xi, 6); ctx.lineTo(xi+sawSize, 6+sawSize); ctx.lineTo(xi+sawSize*2, 6); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(xi, totalH-6); ctx.lineTo(xi+sawSize, totalH-6-sawSize); ctx.lineTo(xi+sawSize*2, totalH-6); ctx.fill();
+    }
+
+    var y = pad;
+
+    // Logo
+    ctx.font = "italic bold 36px 'Georgia', serif";
+    ctx.fillStyle = GOLD;
+    ctx.textAlign = 'center';
+    ctx.fillText('Liz Luxe', W/2, y+32);
+    y += 46;
+
+    // Subtitle
+    ctx.font = "12px 'Georgia', serif";
+    ctx.fillStyle = GOLD_DIM;
+    ctx.fillText('LUXURY  ·  BEAUTY  ·  STYLE', W/2, y+12);
+    y += 28;
+
+    // Title
+    ctx.font = "bold 18px " + font;
+    ctx.fillStyle = WHITE;
+    ctx.fillText('DEBTORS REPORT', W/2, y+18);
+    y += 30;
+
+    // Date
+    ctx.font = "13px " + font;
+    ctx.fillStyle = GREY;
+    ctx.fillText(today, W/2, y+14);
+    y += 36;
+
+    // Summary bar
+    ctx.fillStyle = ERR_BG;
+    ctx.fillRect(pad, y, W - pad*2, 56);
+    ctx.strokeStyle = 'rgba(224,96,96,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pad, y, W - pad*2, 56);
+
+    ctx.font = "bold 24px " + font;
+    ctx.fillStyle = ERR;
+    ctx.textAlign = 'left';
+    ctx.fillText('KES ' + Math.round(totalOwed).toLocaleString(), pad+16, y+36);
+    ctx.font = "11px " + font;
+    ctx.fillStyle = GREY;
+    ctx.fillText('TOTAL OUTSTANDING', pad+16, y+52);
+
+    ctx.textAlign = 'right';
+    ctx.font = "bold 24px " + font;
+    ctx.fillStyle = WHITE;
+    ctx.fillText(String(debtorCount), W-pad-16, y+36);
+    ctx.font = "11px " + font;
+    ctx.fillStyle = GREY;
+    ctx.fillText('DEBTORS', W-pad-16, y+52);
+    y += 72;
+
+    // Table header
+    ctx.fillStyle = 'rgba(201,151,42,0.13)';
+    ctx.fillRect(pad, y, W - pad*2, tableHeaderH);
+    ctx.strokeStyle = BORDER;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pad, y, W - pad*2, tableHeaderH);
+
+    ctx.font = "bold 11px " + font;
+    ctx.fillStyle = GOLD;
+    ctx.textAlign = 'left';
+    var colX = {name: pad+14, items: W*0.30, last: W*0.68, owed: W-pad-14};
+    ctx.fillText('CUSTOMER', colX.name, y+28);
+    ctx.fillText('LAST ITEMS PURCHASED', colX.items, y+28);
+    ctx.textAlign = 'right';
+    ctx.fillText('LAST DATE', colX.last, y+28);
+    ctx.fillText('OWED', colX.owed, y+28);
+    y += tableHeaderH;
+
+    // Table rows
+    for (var ri = 0; ri < actualRows; ri++) {
+      var name = keys[ri];
+      var sales = d.map[name]; // d.map[name] is already the array of sales
+      var owed = sales.reduce(function(a, s) { return a + (s.balance || 0); }, 0);
+
+      var mostRecent = sales.slice().sort(function(a, b) { return b.date.localeCompare(a.date); })[0];
+      var lastDate = mostRecent ? mostRecent.date : '';
+      var lastItems = '';
+      if (mostRecent && mostRecent.items && mostRecent.items.length) {
+        var itemNames = mostRecent.items.map(function(i) { return i.qty + 'x ' + i.name; });
+        lastItems = itemNames.join(', ');
+        if (lastItems.length > 32) lastItems = lastItems.slice(0, 30) + '…';
+      }
+
+      if (ri % 2 === 1) {
+        ctx.fillStyle = 'rgba(255,255,255,0.02)';
+        ctx.fillRect(pad, y, W - pad*2, rowH);
+      }
+
+      ctx.strokeStyle = BORDER;
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(pad, y + rowH);
+      ctx.lineTo(W - pad, y + rowH);
+      ctx.stroke();
+
+      ctx.font = "bold 13px " + font;
+      ctx.fillStyle = WHITE;
+      ctx.textAlign = 'left';
+      var displayName = name.length > 18 ? name.slice(0, 16) + '…' : name;
+      ctx.fillText(displayName, colX.name, y+22);
+
+      ctx.font = "11px " + font;
+      ctx.fillStyle = GREY;
+      ctx.fillText(lastItems || '—', colX.items, y+22);
+
+      ctx.font = "12px " + font;
+      ctx.fillStyle = GREY;
+      ctx.textAlign = 'right';
+      var lastStr = lastDate ? new Date(lastDate+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short'}) : '—';
+      ctx.fillText(lastStr, colX.last, y+22);
+
+      ctx.font = "bold 15px " + font;
+      ctx.fillStyle = ERR;
+      ctx.fillText('KES ' + Math.round(owed).toLocaleString(), colX.owed, y+22);
+
+      ctx.font = "10px " + font;
+      ctx.fillStyle = GOLD_DIM;
+      ctx.textAlign = 'left';
+      ctx.fillText(sales.length + ' sale' + (sales.length !== 1 ? 's' : ''), colX.name, y+42);
+
+      y += rowH;
+    }
+
+    if (truncated) {
+      ctx.font = "italic 12px " + font;
+      ctx.fillStyle = GREY;
+      ctx.textAlign = 'center';
+      ctx.fillText('… and ' + (keys.length - maxRows) + ' more debtors …', W/2, y+20);
+      y += 30;
+    }
+
+    // Footer
+    y += 16;
+    ctx.font = "italic 13px 'Georgia', serif";
+    ctx.fillStyle = GREY;
+    ctx.textAlign = 'center';
+    ctx.fillText('✦  Liz Luxe POS  ✦', W/2, y+16);
+
+    // Generate data URL and open in new tab
+    var dataUrl = canvas.toDataURL('image/png');
+    var win = window.open();
+    if (win) {
+      var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Liz Luxe — Debtors Report</title>';
+      html += '<style>body{margin:0;background:#0a0a0a;color:#f0ead6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;text-align:center;}p{padding:20px 16px 8px;font-size:14px;color:#8a7f6a;}img{width:100%;max-width:800px;display:block;margin:0 auto;border-radius:8px;}button{margin:16px;padding:12px 24px;background:#C9972A;color:#0a0a0a;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;}button:active{opacity:.8;}</style></head><body>';
+      html += '<p>📋 Liz Luxe Debtors Report &mdash; ' + today + '</p>';
+      html += '<img src="' + dataUrl + '" alt="Debtors Report">';
+      html += '<br><a href="' + dataUrl + '" download="LizLuxe-Debtors.png"><button>⬇ Download Image</button></a>';
+      html += '<p style="font-size:12px;padding-top:4px;">Long-press the image above to share via WhatsApp</p>';
+      html += '</body></html>';
+      win.document.write(html);
+      win.document.close();
+    } else {
+      toast('Popup blocked — allow popups for this site', 'err');
+    }
+
+  } catch(e) {
+    console.error('shareDebtorsReport error:', e);
+    toast('Could not generate image: ' + e.message, 'err');
+  }
 }
 
 // ── Recycle Bin ──
@@ -3548,6 +3776,24 @@ function fallbackCopy(text) {
   document.body.removeChild(ta);
 }
 
+
+// ── Backfill old sales without receipt_ref ──
+function backfillReceiptRefs() {
+  dbGet('sales', '?receipt_ref=is.null&order=date.asc').then(function(sales) {
+    if (!sales.length) return;
+    var ps = sales.map(function(s, idx) {
+      var dateStr = s.date.replace(/-/g, '');
+      var ref = 'LX-' + dateStr + '-' + String(idx + 1).padStart(3, '0');
+      return dbPatch('sales', {receipt_ref: ref}, '?id=eq.' + s.id);
+    });
+    Promise.all(ps).then(function() {
+      console.log('Backfilled ' + sales.length + ' sales with receipt refs');
+    }).catch(function(e) {
+      console.error('Backfill error:', e);
+    });
+  }).catch(function() {});
+}
+
 function initApp() {
   initDate();
   showTab('inventory', document.querySelector('.bni[data-tab=inventory]'));
@@ -3561,7 +3807,8 @@ if (loadSession()) {
   // Have a saved token — try to use it; if expired, refresh
   document.getElementById('login-screen').classList.add('hidden');
   refreshSession().then(function(ok) {
-    if (ok) { initApp(); }
+    if (ok) { initApp();
+    backfillReceiptRefs(); }
     else { clearSession(); document.getElementById('login-screen').classList.remove('hidden'); }
   }).catch(function() {
     // Refresh failed but token might still be valid — try anyway
@@ -3634,6 +3881,215 @@ window.addEventListener('appinstalled', function() {
   document.querySelector('.shell').style.paddingTop = '';
   toast('Liz Luxe POS installed!', 'ok');
 });
+
+// ── Quick Sale from WhatsApp message ──
+var _quickSaleData = null;
+
+function toggleQuickSale() {
+  var form = document.getElementById('quick-sale-form');
+  var btn = document.getElementById('quick-toggle-btn');
+  var isOpen = form.style.display === 'block';
+  form.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? 'Show' : 'Hide';
+}
+
+function parseQuickSale(text) {
+  var preview = document.getElementById('quick-preview');
+  var body = document.getElementById('quick-preview-body');
+  var btn = document.getElementById('quick-sale-btn');
+
+  if (!text.trim()) {
+    preview.style.display = 'none';
+    btn.disabled = true;
+    _quickSaleData = null;
+    return;
+  }
+
+  // Parse patterns:
+  // "Simon 1 Chain 250 mpesa" → customer, qty, item, price, method
+  // "Mary 2 Perfume 500 cash" → customer, qty, item, price, method
+  // "John 1 Gold Ring 1500" → customer, qty, item, price (no method = cash)
+
+  var lines = text.trim().split(/\n/).filter(function(l) { return l.trim(); });
+  var sales = [];
+
+  lines.forEach(function(line) {
+    // Try to extract: [Customer] [Qty] [Item...] [Price] [Method?]
+    var words = line.trim().split(/\s+/);
+    if (words.length < 3) return;
+
+    var customer = words[0];
+    var qty = 1;
+    var price = 0;
+    var method = 'Cash';
+    var itemWords = [];
+
+    // Check if second word is a number (qty)
+    var qtyIdx = 1;
+    if (!isNaN(parseInt(words[1]))) {
+      qty = parseInt(words[1]);
+      qtyIdx = 2;
+    }
+
+    // Look for price (number near end) and method (cash/mpesa/card)
+    var methodWords = ['cash', 'mpesa', 'm-pesa', 'card', 'credit', 'bank'];
+    var lastPriceIdx = -1;
+    var methodIdx = -1;
+
+    for (var i = words.length - 1; i >= qtyIdx; i--) {
+      var w = words[i].toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (methodIdx === -1 && methodWords.indexOf(w) >= 0) {
+        methodIdx = i;
+        method = words[i].charAt(0).toUpperCase() + words[i].slice(1).toLowerCase();
+        if (method.toLowerCase() === 'mpesa') method = 'M-Pesa';
+      }
+      if (lastPriceIdx === -1 && !isNaN(parseFloat(words[i]))) {
+        lastPriceIdx = i;
+        price = parseFloat(words[i]);
+      }
+      if (lastPriceIdx !== -1 && methodIdx !== -1) break;
+    }
+
+    // If no method found, check the very last word
+    if (methodIdx === -1 && words.length > 1) {
+      var lastW = words[words.length - 1].toLowerCase();
+      if (methodWords.indexOf(lastW) >= 0) {
+        methodIdx = words.length - 1;
+        method = lastW.charAt(0).toUpperCase() + lastW.slice(1);
+        if (method === 'Mpesa') method = 'M-Pesa';
+      }
+    }
+
+    // If no explicit price found, look for any number after qty
+    if (price === 0) {
+      for (var j = qtyIdx; j < words.length; j++) {
+        if (!isNaN(parseFloat(words[j]))) {
+          price = parseFloat(words[j]);
+          lastPriceIdx = j;
+          break;
+        }
+      }
+    }
+
+    // Item words are between qty and price/method
+    var endIdx = lastPriceIdx !== -1 ? lastPriceIdx : (methodIdx !== -1 ? methodIdx : words.length);
+    for (var k = qtyIdx; k < endIdx; k++) {
+      itemWords.push(words[k]);
+    }
+
+    var itemName = itemWords.join(' ').trim() || 'Unknown Item';
+
+    // Find matching inventory item
+    var matchedItem = null;
+    var searchName = itemName.toLowerCase();
+    for (var m = 0; m < inv.length; m++) {
+      if (inv[m].name.toLowerCase().indexOf(searchName) >= 0 || searchName.indexOf(inv[m].name.toLowerCase()) >= 0) {
+        matchedItem = inv[m];
+        break;
+      }
+    }
+
+    sales.push({
+      customer: customer,
+      qty: qty,
+      itemName: itemName,
+      matchedItem: matchedItem,
+      price: price,
+      method: method,
+      original: line
+    });
+  });
+
+  if (!sales.length) {
+    preview.style.display = 'none';
+    btn.disabled = true;
+    _quickSaleData = null;
+    return;
+  }
+
+  _quickSaleData = sales;
+
+  var html = '';
+  sales.forEach(function(s, i) {
+    var itemDisplay = s.matchedItem 
+      ? '<span style="color:var(--ok);">✓ ' + escHtml(s.matchedItem.name) + '</span> (stock: ' + s.matchedItem.remaining + ')'
+      : '<span style="color:var(--err);">✗ No match: "' + escHtml(s.itemName) + '"</span>';
+    var priceDisplay = s.price > 0 ? 'KES ' + s.price.toLocaleString() : '<span style="color:var(--err);">No price</span>';
+
+    html += '<div style="padding:8px 0;border-bottom:1px solid var(--b3);">';
+    html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+    html += '<span style="font-weight:700;">' + escHtml(s.customer) + '</span>';
+    html += '<span class="chip">' + s.method + '</span></div>';
+    html += '<div style="font-size:12px;color:var(--t2);">' + s.qty + 'x ' + itemDisplay + '</div>';
+    html += '<div style="font-size:13px;color:var(--gold);font-weight:700;margin-top:4px;">' + priceDisplay + '</div>';
+    html += '</div>';
+  });
+
+  body.innerHTML = html;
+  preview.style.display = 'block';
+
+  // Enable button only if all sales have matched items and prices
+  var allValid = sales.every(function(s) { return s.matchedItem && s.price > 0; });
+  btn.disabled = !allValid;
+}
+
+function submitQuickSale() {
+  if (!_quickSaleData || !_quickSaleData.length) return;
+
+  var btn = document.getElementById('quick-sale-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  var today = new Date().toISOString().slice(0, 10);
+  var ps = [];
+
+  _quickSaleData.forEach(function(s) {
+    var item = s.matchedItem;
+    var total = s.price * s.qty;
+    var items = [{
+      id: item.id,
+      name: item.name,
+      qty: s.qty,
+      selling_price: s.price,
+      buying_price: item.buying_price
+    }];
+
+    var saleData = {
+      customer_name: s.customer,
+      items: items,
+      total: total,
+      paid: total,
+      balance: 0,
+      method: s.method,
+      date: today,
+      receipt_ref: genRef()
+    };
+
+    ps.push(
+      dbPost('sales', saleData).then(function() {
+        return dbPatch('inventory', {remaining: Math.max(0, item.remaining - s.qty)}, '?id=eq.' + item.id);
+      }).then(function() {
+        item.remaining = Math.max(0, item.remaining - s.qty);
+      })
+    );
+  });
+
+  Promise.all(ps).then(function() {
+    toast('Quick sale saved ✓', 'ok');
+    document.getElementById('quick-input').value = '';
+    document.getElementById('quick-preview').style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Complete Quick Sale';
+    _quickSaleData = null;
+    allSales = [];
+    loadInv();
+    checkLow();
+  }).catch(function(e) {
+    toast('Error: ' + e.message, 'err');
+    btn.disabled = false;
+    btn.textContent = 'Complete Quick Sale';
+  });
+}
 </script>
 </body>
 </html>
