@@ -1802,12 +1802,20 @@ var _transfers = [];
 
 // ── Export Ledger to Excel (multi-sheet CSV packaged as XLSX via SheetJS-style raw XML) ──
 function exportLedger() {
+  var range = getLedgerRange(true);
+  var from = range.from;
+  var to = range.to;
   var sel = document.getElementById('ledger-month-sel');
-  var month = sel ? sel.value : new Date().toISOString().slice(0,7);
-  var monthName = sel ? sel.options[sel.selectedIndex].text : month;
-  var from = month + '-01';
-  var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
-  var to = month + '-' + String(last.getDate()).padStart(2,'0');
+  var monthName;
+  if (sel && sel.value) {
+    monthName = sel.options[sel.selectedIndex].text;
+  } else if (from === '2000-01-01') {
+    monthName = 'All-Time';
+  } else if (from.slice(0, 7) === to.slice(0, 7)) {
+    monthName = new Date(from + 'T12:00:00').toLocaleDateString('en-KE', {month: 'long', year: 'numeric'});
+  } else {
+    monthName = from + '_to_' + to;
+  }
   toast('Preparing export...', 'ok');
 
   Promise.all([
@@ -2428,20 +2436,25 @@ function permanentDelete(id) {
     .catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
-function getLedgerRange() {
+function getLedgerRange(allTime) {
   var from = document.getElementById('ledger-from').value;
   var to = document.getElementById('ledger-to').value;
-  if (from && to) return {from:from, to:to};
-  if (from && !to) return {from:from, to:from};
-  // Fall back to month selector
+  if (from && to) return {from: from, to: to};
+  if (from && !to) return {from: from, to: new Date().toISOString().slice(0, 10)};
+  if (!from && to) return {from: '2000-01-01', to: to};
   var sel = document.getElementById('ledger-month-sel');
-  var month = sel.value;
-  if (!month) {
-    var now = new Date();
-    month = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var month = sel ? sel.value : '';
+  if (month) {
+    var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+    return {from: month + '-01', to: month + '-' + String(last.getDate()).padStart(2, '0')};
   }
-  var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
-  return {from: month+'-01', to: month+'-'+String(last.getDate()).padStart(2,'0')};
+  if (allTime) {
+    return {from: '2000-01-01', to: new Date().toISOString().slice(0, 10)};
+  }
+  var now = new Date();
+  var cur = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  var last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {from: cur + '-01', to: cur + '-' + String(last.getDate()).padStart(2, '0')};
 }
 
 function onLedgerMonthChange() {
@@ -2486,7 +2499,7 @@ function loadLedgerData(allTime) {
   document.getElementById('ledger-body').innerHTML = '<div class="empty">Loading...</div>';
   var from, to;
   if (allTime) {
-    from = '2020-01-01';
+    from = '2000-01-01';
     to = new Date().toISOString().slice(0,10);
     document.getElementById('ledger-subtitle').textContent = 'All transactions';
   } else {
@@ -3804,6 +3817,8 @@ function initApp() {
   if (document.getElementById('lock-hint')) {
     document.getElementById('lock-hint').textContent = typeof appPin !== 'undefined' && appPin === '1234' ? 'Default PIN: 1234' : 'Enter your PIN';
   }
+  // Backfill missing receipt refs for old sales
+  backfillReceiptRefs();
 }
 
 // ── Startup: check for saved session ──
@@ -4094,6 +4109,30 @@ function submitQuickSale() {
     btn.textContent = 'Complete Quick Sale';
   });
 }
+
+// Backfill missing receipt_ref for old sales
+function backfillReceiptRefs() {
+  dbGet('sales', '?receipt_ref=is.null&order=date.asc').then(function(sales) {
+    if (!sales.length) return;
+    console.log('Backfilling ' + sales.length + ' sales with missing receipt refs...');
+    var ps = [];
+    var dateCounters = {};
+    sales.forEach(function(s) {
+      var dateStr = s.date.replace(/-/g, '');
+      if (!dateCounters[dateStr]) dateCounters[dateStr] = 0;
+      dateCounters[dateStr]++;
+      var ref = 'LX-' + dateStr + '-' + String(dateCounters[dateStr]).padStart(3, '0');
+      ps.push(dbPatch('sales', {receipt_ref: ref}, '?id=eq.' + s.id));
+    });
+    Promise.all(ps).then(function() {
+      console.log('Backfilled ' + sales.length + ' sales with receipt refs');
+      toast('Assigned receipt codes to ' + sales.length + ' old sales', 'ok');
+    }).catch(function(e) {
+      console.error('Backfill error:', e);
+    });
+  }).catch(function() {});
+}
+
 </script>
 </body>
 </html>
