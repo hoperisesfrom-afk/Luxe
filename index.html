@@ -389,6 +389,10 @@ select option{background:#1c1c1c}
           </div>
           <div><label>Date</label><input id="sale-date" type="date"></div>
         </div>
+        <div class="fr">
+          <div><label>Customer Phone (optional)</label><input id="sale-phone" placeholder="e.g. 0712 345 678" autocomplete="off"></div>
+          <div></div>
+        </div>
       </div>
             <div class="card" id="quick-sale-card">
         <div class="ct" style="display:flex;justify-content:space-between;align-items:center;">
@@ -619,6 +623,11 @@ select option{background:#1c1c1c}
               <div style="font-size:13px;font-weight:700;color:var(--t2);">Recycle Bin</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Deleted items &amp; sales</div>
             </button>
+            <button onclick="window.open('activity-report.html', '_blank')" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128200;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--t);">Activity Report</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Cash flow &amp; running balance</div>
+            </button>
           </div>
         </div>
 
@@ -734,6 +743,24 @@ select option{background:#1c1c1c}
       <div class="sc"><div class="sl">Visits</div><div class="sv" id="cd-visits" style="color:var(--gold)">0</div></div>
       <div class="sc"><div class="sl">Balance</div><div class="sv" id="cd-balance" style="color:var(--err)">KES 0</div></div>
       <div class="sc"><div class="sl">Last Visit</div><div class="sv" id="cd-last" style="font-size:13px;color:var(--t)">—</div></div>
+    </div>
+    <!-- Phone & Contact Section -->
+    <div style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:12px;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;font-weight:700;">📱 Phone</span>
+        <span id="cd-phone-display" style="font-size:13px;color:var(--t);font-weight:600;">—</span>
+      </div>
+      <div id="cd-phone-edit-wrap" style="display:none;">
+        <input type="tel" id="cd-phone-input" placeholder="e.g. 0712 345 678" style="margin-bottom:8px;">
+        <div style="display:flex;gap:8px;">
+          <button class="btn bp bsm" onclick="saveCustomerPhone()" style="flex:1;">💾 Save</button>
+          <button class="btn bsm" onclick="togglePhoneEdit()" style="flex:1;">Cancel</button>
+        </div>
+      </div>
+      <div id="cd-phone-actions" style="display:flex;gap:8px;">
+        <button class="btn bsm" onclick="togglePhoneEdit()" style="flex:1;background:var(--gold-bg);color:var(--gold);border-color:transparent;">✏️ Edit</button>
+        <button class="btn bsm bok-btn" id="cd-remind-btn" onclick="sendCustReminder()" style="flex:1;display:none;">📲 Remind</button>
+      </div>
     </div>
     <div id="cd-debt-actions" style="display:none;margin-bottom:12px;"></div>
     <div id="cd-payment-log" style="display:none;margin-bottom:16px;"></div>
@@ -1432,13 +1459,17 @@ function sharePL() {
 var allCustNames = [];
 
 function loadSalesNames() {
-  dbGet('sales', '?select=customer_name&order=created_at.desc&limit=500').then(function(d) {
+  dbGet('sales', '?select=customer_name,customer_phone&order=created_at.desc&limit=500').then(function(d) {
     var seen = {};
     allCustNames = [];
+    window._custPhones = {};
     d.forEach(function(s) {
       var n = s.customer_name;
       if (n && n !== 'Walk-in' && n.indexOf('[RETURNED]') < 0 && !seen[n]) {
         seen[n] = 1; allCustNames.push(n);
+      }
+      if (s.customer_phone && n) {
+        window._custPhones[n] = s.customer_phone;
       }
     });
   }).catch(function() {});
@@ -1458,8 +1489,13 @@ function custSuggest() {
   dd.innerHTML = html;
   dd.querySelectorAll('.cust-opt').forEach(function(el) {
     el.addEventListener('click', function() {
-      document.getElementById('sale-cust').value = el.textContent;
+      var name = el.textContent;
+      document.getElementById('sale-cust').value = name;
       dd.style.display = 'none';
+      // Auto-fill phone if known
+      if (window._custPhones && window._custPhones[name]) {
+        document.getElementById('sale-phone').value = window._custPhones[name];
+      }
     });
   });
   dd.style.display = 'block';
@@ -2146,10 +2182,18 @@ function showDebtorsReport() {
         }
         html += '</div>';
       });
-      html += '</div>';
-    });
+    // Add reminder buttons for this customer
+    var custPhone = '';
+    custSales.forEach(function(s) { if (s.customer_phone) custPhone = s.customer_phone; });
+    html += '<div style="display:flex;gap:8px;margin-top:10px;">';
+    var safeName = escHtml(name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    html += '<button class="btn bsm bok-btn" onclick="sendDebtReminderFromReport(\'' + safeName + '\', ' + owed + ', \'' + (custPhone || '') + '\')" style="flex:1;font-size:11px;">📲 WhatsApp Reminder</button>';
+    html += '<button class="btn bsm" onclick="copyDebtReminder(\'' + safeName + '\', ' + owed + ')" style="flex:1;background:var(--gold-bg);color:var(--gold);border-color:transparent;font-size:11px;">📋 Copy Text</button>';
     html += '</div>';
-    el.innerHTML = html;
+    html += '</div>';
+  });
+  html += '</div>';
+  el.innerHTML = html;
     window._debtorsData = {map: map, totalOwed: totalOwed};
   }).catch(function(e) { el.innerHTML = '<div class="empty">Error: ' + e.message + '</div>'; });
 }
@@ -2804,7 +2848,8 @@ function completeSale() {
   loading('sale-btn', true);
   var items = cart.map(function(c) { return {id: c.id, name: c.name, qty: c.qty, selling_price: c.sp, buying_price: c.bp}; });
   lastReceiptRef = genRef();
-  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0};
+  var phone = document.getElementById('sale-phone').value.trim();
+var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0, customer_phone: phone || null};
   if (splitDetails) saleData.split_details = splitDetails;
 
   dbPost('sales', saleData)
@@ -2821,6 +2866,7 @@ function completeSale() {
       showReceipt(cust, date, items, total, paid, balance, method, splitDetails);
       cart = []; allSales = [];
       document.getElementById('sale-cust').value = '';
+      document.getElementById('sale-phone').value = '';
       document.getElementById('sale-paid').value = '';
       document.getElementById('sp-cash').value = '';
       document.getElementById('sp-mpesa').value = '';
@@ -3025,11 +3071,36 @@ function openCustDetail(name) {
   document.getElementById('cd-name').textContent = escHtml(name);
   document.getElementById('cd-meta').textContent = _cdSales.length + ' purchase' + (_cdSales.length !== 1 ? 's' : '');
   document.getElementById('cd-total').textContent = fmt(orderTotal);
+
+  // Store customer name for phone editing
+  document.getElementById('cust-detail-overlay')._custName = name;
   document.getElementById('cd-visits').textContent = _cdSales.length;
   var balEl = document.getElementById('cd-balance');
   balEl.textContent = fmt(balance);
   balEl.style.color = balance > 0 ? 'var(--err)' : 'var(--ok)';
   document.getElementById('cd-last').textContent = lastDate;
+
+  // Populate phone number
+  var phone = '';
+  for (var i = 0; i < _cdSales.length; i++) {
+    if (_cdSales[i].customer_phone) { phone = _cdSales[i].customer_phone; break; }
+  }
+  if (!phone && window._custPhones && window._custPhones[name]) {
+    phone = window._custPhones[name];
+  }
+  document.getElementById('cd-phone-display').textContent = phone || '—';
+  document.getElementById('cd-phone-input').value = phone || '';
+  // Show reminder button only if there's a balance
+  var remindBtn = document.getElementById('cd-remind-btn');
+  if (balance > 0) {
+    remindBtn.style.display = 'block';
+    remindBtn.textContent = phone ? '📲 WhatsApp Remind' : '📲 Copy Reminder';
+  } else {
+    remindBtn.style.display = 'none';
+  }
+  // Reset phone edit state
+  document.getElementById('cd-phone-edit-wrap').style.display = 'none';
+  document.getElementById('cd-phone-actions').style.display = 'flex';
 
   // ── Payment log (history of partial payments) ──
   var plEl = document.getElementById('cd-payment-log');
@@ -3164,6 +3235,83 @@ function cdMarkFullyPaid() {
 function closeCustDetail() {
   document.getElementById('cust-detail-overlay').classList.remove('on');
 }
+
+function togglePhoneEdit() {
+  var wrap = document.getElementById('cd-phone-edit-wrap');
+  var actions = document.getElementById('cd-phone-actions');
+  var isEditing = wrap.style.display === 'block';
+  wrap.style.display = isEditing ? 'none' : 'block';
+  actions.style.display = isEditing ? 'flex' : 'none';
+  if (!isEditing) document.getElementById('cd-phone-input').focus();
+}
+
+function sendCustReminder() {
+  var name = document.getElementById('cd-name').textContent;
+  var balance = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
+  var phone = document.getElementById('cd-phone-display').textContent;
+  if (phone === '—') phone = '';
+
+  // Build item list from unpaid sales
+  var items = [];
+  _cdSales.forEach(function(s) {
+    if ((s.balance || 0) > 0) {
+      (s.items || []).forEach(function(i) {
+        items.push(i.qty + 'x ' + i.name);
+      });
+    }
+  });
+  var itemList = items.slice(0, 5).join('\n');
+  if (items.length > 5) itemList += '\n... and ' + (items.length - 5) + ' more';
+
+  var msg = 'Hi ' + name + ', this is Liz Luxe.\n\n';
+  msg += 'Your outstanding balance is *' + fmt(balance) + '*.\n\n';
+  if (itemList) msg += 'Items:\n' + itemList + '\n\n';
+  msg += 'Please pay at your earliest convenience.\n';
+  msg += 'M-Pesa: 0795060967 - Simon\n\n';
+  msg += '✨ _Thank you for shopping with Liz Luxe_ ✨';
+
+  if (phone) {
+    // Clean phone number for WhatsApp
+    var cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '254' + cleanPhone.substring(1);
+    if (!cleanPhone.startsWith('254')) cleanPhone = '254' + cleanPhone;
+    window.open('https://wa.me/' + cleanPhone + '?text=' + encodeURIComponent(msg), '_blank');
+  } else {
+    // Copy to clipboard if no phone
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(msg).then(function() { toast('Reminder copied — paste in WhatsApp', 'ok'); }).catch(function() { fallbackCopy(msg); });
+    } else { fallbackCopy(msg); }
+  }
+}
+
+function saveCustomerPhone() {
+  var phone = document.getElementById('cd-phone-input').value.trim();
+  var name = document.getElementById('cd-name').textContent;
+  if (!phone) { toast('Enter a phone number', 'err'); return; }
+  // Update all sales for this customer
+  dbGet('sales', '?customer_name=eq.' + encodeURIComponent(name)).then(function(sales) {
+    var ps = sales.map(function(s) {
+      return dbPatch('sales', {customer_phone: phone}, '?id=eq.' + s.id);
+    });
+    return Promise.all(ps);
+  }).then(function() {
+    toast('Phone number saved for ' + name, 'ok');
+    // Update local data
+    if (_cdSales[0]) _cdSales[0].customer_phone = phone;
+    window._custPhones[name] = phone;
+    // Update display
+    document.getElementById('cd-phone-display').textContent = phone;
+    togglePhoneEdit();
+    // Refresh reminder button
+    var balance = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
+    var remindBtn = document.getElementById('cd-remind-btn');
+    if (balance > 0) {
+      remindBtn.style.display = 'block';
+      remindBtn.textContent = '📲 WhatsApp Remind';
+    }
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+}
+
 
 
 
@@ -4131,6 +4279,43 @@ function backfillReceiptRefs() {
       console.error('Backfill error:', e);
     });
   }).catch(function() {});
+}
+
+
+// WhatsApp Debt Reminder
+function sendDebtReminderFromReport(name, balance, phone) {
+  var msg = 'Hi ' + name + ', this is Liz Luxe.\n\n';
+  msg += 'Your outstanding balance is *' + fmt(balance) + '*.\n\n';
+  msg += 'Please pay at your earliest convenience.\n';
+  msg += 'M-Pesa: 0795060967 - Simon\n\n';
+  msg += '✨ _Thank you for shopping with Liz Luxe_ ✨';
+
+  if (phone && phone !== 'undefined') {
+    var cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '254' + cleanPhone.substring(1);
+    if (!cleanPhone.startsWith('254')) cleanPhone = '254' + cleanPhone;
+    window.open('https://wa.me/' + cleanPhone + '?text=' + encodeURIComponent(msg), '_blank');
+  } else {
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+  }
+}
+
+function copyDebtReminder(name, balance) {
+  var msg = 'Hi ' + name + ', this is Liz Luxe.\n\n';
+  msg += 'Your outstanding balance is *' + fmt(balance) + '*.\n\n';
+  msg += 'Please pay at your earliest convenience.\n';
+  msg += 'M-Pesa: 0795060967 - Simon\n\n';
+  msg += '✨ _Thank you for shopping with Liz Luxe_ ✨';
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(msg).then(function() { toast('Reminder copied — paste in WhatsApp', 'ok'); }).catch(function() { fallbackCopy(msg); });
+  } else { fallbackCopy(msg); }
+}
+
+function initDate() {
+  var today = new Date().toISOString().slice(0, 10);
+  var el = document.getElementById('sale-date');
+  if (el && !el.value) el.value = today;
 }
 
 </script>
