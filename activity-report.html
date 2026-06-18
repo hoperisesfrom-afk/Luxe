@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Liz Luxe - Activity Report</title>
+<meta name="theme-color" content="#0a0a0a">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#f0ead6;font-size:14px}
+:root{
+  --gold:#C9972A;--gold-d:#a67c1e;--gold-bg:rgba(201,151,42,0.13);
+  --s:#141414;--s2:#1c1c1c;--s3:#242424;
+  --b:rgba(201,151,42,0.2);--b2:rgba(201,151,42,0.35);--b3:rgba(255,255,255,0.07);
+  --t:#f0ead6;--t2:#8a7f6a;--t3:#4a4030;
+  --ok-bg:rgba(55,110,35,0.22);--ok:#7bc950;
+  --err-bg:rgba(160,35,35,0.22);--err:#e06060;
+  --info:#6aabf0;--info-bg:rgba(40,100,180,0.15);
+  --r:14px;--rs:10px;
+}
+.shell{max-width:480px;margin:0 auto;padding:14px;padding-bottom:80px;overflow-y:auto;height:100vh;-webkit-overflow-scrolling:touch}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;background:var(--s);border-bottom:1px solid var(--b);position:sticky;top:0;z-index:100}
+.logo-name{font-size:20px;font-weight:800;color:var(--gold);font-style:italic;letter-spacing:.5px}
+.logo-sub{font-size:9px;color:var(--t2);letter-spacing:3px;text-transform:uppercase}
+.btn{display:block;width:100%;padding:12px 18px;border-radius:var(--rs);font-size:14px;cursor:pointer;border:1px solid var(--b);background:var(--s3);color:var(--t);font-weight:600;text-align:center}
+.btn:active{opacity:.8}
+.bp{background:var(--gold);color:#0a0a0a;border-color:var(--gold)}
+.bsm{padding:8px 14px;font-size:12px}
+.empty{text-align:center;padding:32px;color:var(--t2);font-size:13px}
+.toast{position:fixed;bottom:12px;left:14px;right:14px;max-width:452px;margin:0 auto;background:#1a1500;color:var(--gold);padding:13px 16px;border-radius:var(--rs);font-size:13px;font-weight:600;z-index:9999;opacity:0;transform:translateY(6px);transition:all .25s;pointer-events:none;border:1px solid var(--b2);text-align:center}
+.toast.on{opacity:1;transform:translateY(0)}
+.toast.ok{background:rgba(35,70,18,.97);color:var(--ok);border-color:rgba(123,201,80,.3)}
+.toast.err{background:rgba(70,18,18,.97);color:var(--err);border-color:rgba(224,96,96,.3)}
+
+/* Activity Report Table */
+.act-header{display:grid;grid-template-columns:80px 1fr 70px 70px 90px 80px 80px 80px;gap:8px;padding:10px 14px;background:var(--s2);border:1px solid var(--b);border-radius:var(--rs) var(--rs) 0 0;font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;min-width:560px}
+.act-row{display:grid;grid-template-columns:80px 1fr 70px 70px 90px 80px 80px 80px;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--b3);min-width:560px;font-size:13px;background:var(--s2)}
+.act-row:hover{background:var(--s3)}
+.act-date{color:var(--t2);font-size:12px}
+.act-event{min-width:0}
+.act-event-title{font-weight:600;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.act-event-wallet{font-size:11px;color:var(--t2);margin-top:2px}
+.act-in{text-align:right;color:var(--ok);font-weight:700}
+.act-out{text-align:right;color:var(--err);font-weight:700}
+.act-bal{text-align:right;color:var(--gold);font-weight:800;font-size:14px}
+.act-cred{text-align:right;color:var(--err);font-weight:700}
+.act-net{text-align:right;color:var(--t);font-weight:700}
+.act-opening{background:var(--info-bg);border-left:3px solid var(--info);padding:10px 14px;font-size:13px;color:var(--info);font-weight:600;margin-bottom:4px;min-width:560px}
+.act-total-row{background:var(--s3);border-top:2px solid var(--b2);padding:12px 14px;font-weight:800;font-size:14px;min-width:560px}
+.act-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--b);border-radius:0 0 var(--rs) var(--rs)}
+
+.filter-bar{display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--s2);border:1px solid var(--b);border-radius:var(--rs);margin-bottom:12px;flex-wrap:wrap}
+.filter-bar select{flex:1;padding:8px 10px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);color:var(--t);font-family:inherit;min-width:120px}
+.filter-bar input[type=date]{flex:1;padding:8px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);color:var(--t);font-family:inherit}
+.stat-bar{background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:14px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:center}
+.stat-bar-label{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:4px}
+.stat-bar-value{font-size:16px;font-weight:800;color:var(--gold)}
+.login-screen{position:fixed;inset:0;background:#0a0a0a;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px}
+.login-screen.hidden{display:none}
+.login-logo{font-size:36px;font-weight:800;color:var(--gold);font-style:italic;letter-spacing:1px;margin-bottom:4px}
+.login-sub{font-size:10px;color:var(--t2);letter-spacing:4px;text-transform:uppercase;margin-bottom:48px}
+.login-box{width:100%;max-width:340px}
+.login-field{margin-bottom:14px}
+.login-field label{font-size:11px;color:var(--t2);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;display:block}
+.login-field input{width:100%;padding:13px 14px;font-size:15px;border:1px solid var(--b2);border-radius:var(--rs);background:var(--s2);color:var(--t);outline:none}
+.login-field input:focus{border-color:var(--gold)}
+.login-btn{width:100%;padding:14px;background:var(--gold);color:#0a0a0a;border:none;border-radius:var(--rs);font-size:15px;font-weight:800;cursor:pointer;margin-top:8px;letter-spacing:.3px}
+.login-err{color:var(--err);font-size:13px;text-align:center;margin-top:12px;min-height:20px;font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="login-screen" id="login-screen">
+  <div class="login-logo">Liz Luxe</div>
+  <div class="login-sub">Activity Report</div>
+  <div class="login-box">
+    <div class="login-field">
+      <label>Email</label>
+      <input type="email" id="login-email" placeholder="Your email address" autocomplete="email">
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<div class="shell" id="app-shell" style="display:none">
+  <div class="topbar">
+    <div>
+      <div class="logo-name">Liz Luxe</div>
+      <div class="logo-sub">Activity Report</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn bsm" onclick="exportCSV()">Export CSV</button>
+      <button class="btn bsm bp" onclick="shareWhatsApp()">Share</button>
+    </div>
+  </div>
+
+  <div class="stat-bar">
+    <div><div class="stat-bar-label">Cash In</div><div class="stat-bar-value" id="stat-in">KES 0</div></div>
+    <div><div class="stat-bar-label">Cash Out</div><div class="stat-bar-value" id="stat-out" style="color:var(--err)">KES 0</div></div>
+    <div><div class="stat-bar-label">Net Value</div><div class="stat-bar-value" id="stat-net">KES 0</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <select id="month-sel" onchange="onMonthChange()">
+      <option value="">Pick month...</option>
+    </select>
+    <input type="date" id="date-from" onchange="onDateChange()">
+    <span style="color:var(--t2);font-size:12px">to</span>
+    <input type="date" id="date-to" onchange="onDateChange()">
+    <button class="btn bsm" onclick="clearFilter()" style="width:auto;flex-shrink:0">All</button>
+  </div>
+
+  <div class="act-header">
+    <div>Date</div>
+    <div>Event</div>
+    <div style="text-align:right">Cash In</div>
+    <div style="text-align:right">Cash Out</div>
+    <div style="text-align:right;color:var(--gold)">Balance</div>
+    <div style="text-align:right;color:var(--err)">Credit</div>
+    <div style="text-align:right;color:var(--info)">Cust Bal</div>
+    <div style="text-align:right">Net Value</div>
+  </div>
+  <div class="act-scroll" id="table-body">
+    <div class="empty">Loading...</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var SB = 'https://atydgofseradfblzrdbn.supabase.co/rest/v1';
+var SB_AUTH = 'https://atydgofseradfblzrdbn.supabase.co/auth/v1';
+var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0eWRnb2ZzZXJhZGZibHpyZGJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2ODc1NzgsImV4cCI6MjA5MzI2MzU3OH0.f9Slh4NyLDKDJ1nUQJ35GJDIKPZayhLyK9GFXSIihBc';
+var authToken = null;
+var SESSION_KEY = 'llpos_session';
+
+function getHeaders() {
+  var h = {};
+  h['Content-Type'] = 'application/json';
+  h['apikey'] = ANON_KEY;
+  h['Authorization'] = 'Bearer ' + (authToken || ANON_KEY);
+  h['Prefer'] = 'return=representation';
+  return h;
+}
+
+function saveSession(access) {
+  authToken = access;
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify({access: access})); } catch(e) {}
+}
+
+function loadSession() {
+  try {
+    var s = localStorage.getItem(SESSION_KEY);
+    if (s) { var d = JSON.parse(s); authToken = d.access; return true; }
+  } catch(e) {}
+  return false;
+}
+
+function doLogin() {
+  var email = document.getElementById('login-email').value.trim();
+  var password = document.getElementById('login-password').value;
+  var btn = document.getElementById('login-btn');
+  var err = document.getElementById('login-err');
+  if (!email || !password) { err.textContent = 'Please enter email and password.'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in...'; err.textContent = '';
+  fetch(SB_AUTH + '/token?grant_type=password', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY},
+    body: JSON.stringify({email: email, password: password})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.access_token) {
+      saveSession(d.access_token);
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app-shell').style.display = 'block';
+      initApp();
+    } else {
+      err.textContent = d.error_description || d.msg || 'Invalid email or password.';
+      btn.disabled = false; btn.textContent = 'Sign In';
+    }
+  }).catch(function() {
+    err.textContent = 'Network error. Check your connection.';
+    btn.disabled = false; btn.textContent = 'Sign In';
+  });
+}
+
+function req(method, table, body, qs) {
+  return fetch(SB + '/' + table + (qs || ''), {method: method, headers: getHeaders(), body: body ? JSON.stringify(body) : undefined})
+    .then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.message || 'Error ' + r.status); });
+      return r.text().then(function(t) { return t ? JSON.parse(t) : []; });
+    });
+}
+function dbGet(t, q) { return req('GET', t, null, q); }
+
+function fmt(n) { return 'KES ' + Math.round(n || 0).toLocaleString(); }
+function toast(msg, type) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast on' + (type ? ' ' + type : '');
+  setTimeout(function() { el.className = 'toast'; }, 3500);
+}
+
+var _data = null;
+
+function getRange() {
+  var from = document.getElementById('date-from').value;
+  var to = document.getElementById('date-to').value;
+  if (from && to) return {from: from, to: to};
+  if (from && !to) return {from: from, to: new Date().toISOString().slice(0, 10)};
+  if (!from && to) return {from: '2000-01-01', to: to};
+  var sel = document.getElementById('month-sel');
+  var month = sel ? sel.value : '';
+  if (month) {
+    var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+    return {from: month + '-01', to: month + '-' + String(last.getDate()).padStart(2, '0')};
+  }
+  return {from: '2000-01-01', to: new Date().toISOString().slice(0, 10)};
+}
+
+function onMonthChange() {
+  document.getElementById('date-from').value = '';
+  document.getElementById('date-to').value = '';
+  loadData();
+}
+
+function onDateChange() {
+  document.getElementById('month-sel').value = '';
+  loadData();
+}
+
+function clearFilter() {
+  document.getElementById('date-from').value = '';
+  document.getElementById('date-to').value = '';
+  document.getElementById('month-sel').value = '';
+  loadData();
+}
+
+function loadData() {
+  var el = document.getElementById('table-body');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  var range = getRange();
+  var from = range.from;
+  var to = range.to;
+
+  Promise.all([
+    dbGet('sales','?order=date.asc'),
+    dbGet('deductions','?order=date.asc'),
+    dbGet('transfers','?order=date.asc'),
+    dbGet('returns','?order=date.asc')
+  ]).then(function(r) {
+    var allSales = r[0], allDeds = r[1], allTransfers = r[2], allReturns = r[3];
+
+    var events = [];
+    var openingBalance = 0;
+    var openingCredit = 0;
+
+    allSales.forEach(function(s) {
+      if (s.date < from) {
+        openingBalance += (s.paid || 0);
+        openingCredit += (s.balance || 0);
+      } else if (s.date >= from && s.date <= to) {
+        var isReturned = (s.method || '').indexOf('Returned') >= 0;
+        var items = (s.items || []).map(function(i){return i.qty+'x '+i.name;}).join(', ');
+        var total = s.total || 0;
+        var paid = s.paid || 0;
+        var balance = s.balance || 0;
+        var receipt = s.receipt_ref || '';
+
+        if (isReturned) {
+          // Returned sale - if it was credit, reduce credit; if cash, reduce cash
+          var wasCredit = balance > 0 || paid < total;
+          events.push({
+            date: s.date,
+            type: 'returned',
+            title: 'Return: ' + s.customer_name,
+            detail: items + (receipt && receipt !== 'null' && receipt !== 'undefined' ? ' | ' + receipt : ''),
+            wallet: s.method || 'Cash',
+            cashIn: 0,
+            cashOut: wasCredit ? 0 : paid,
+            creditChange: wasCredit ? -balance : 0
+          });
+        } else {
+          // Regular sale
+          // Calculate ORIGINAL state at time of sale (before future payments)
+          var paymentLog = s.payment_log || [];
+          var futurePayments = paymentLog.filter(function(p) { return (p.date || s.date) > s.date; });
+          var totalFuturePayments = futurePayments.reduce(function(sum, p){return sum + (p.amount||0);}, 0);
+          var originalPaid = paid - totalFuturePayments;  // What was paid at sale time
+          var originalBalance = balance + totalFuturePayments;  // Original credit amount
+
+          events.push({
+            date: s.date,
+            type: 'sale',
+            title: 'Sale: ' + s.customer_name,
+            detail: items + (receipt && receipt !== 'null' && receipt !== 'undefined' ? ' | ' + receipt : ''),
+            wallet: s.method || 'Cash',
+            cashIn: originalPaid,  // Original cash at sale time
+            cashOut: 0,
+            creditChange: originalBalance  // Original credit amount
+          });
+
+          // Expand payment_log entries as separate rows
+          // Each payment shows Cash In and REDUCES credit
+          // (credit was increased in the original sale row, now we reduce it)
+          var paymentLog = s.payment_log || [];
+
+          paymentLog.forEach(function(p) {
+            var payAmount = p.amount || 0;
+            var payMethod = p.method || 'Cash';
+            var payDate = p.date || s.date;
+
+            // Only show future payments (date > sale date)
+            if (payDate > s.date && payAmount > 0) {
+              events.push({
+                date: payDate,
+                type: 'payment',
+                title: 'Payment: ' + s.customer_name,
+                detail: 'Repayment' + (receipt && receipt !== 'null' && receipt !== 'undefined' ? ' for ' + receipt : '') + ' | ' + items.split(',')[0] + '...',
+                wallet: payMethod,
+                cashIn: payAmount,
+                cashOut: 0,
+                creditChange: -payAmount  // Reduces credit owed
+              });
+            }
+          });
+        }
+      }
+    });
+
+    allDeds.forEach(function(d) {
+      if (d.date < from) {
+        if (d.type === 'injection') openingBalance += (d.amount || 0);
+        else openingBalance -= (d.amount || 0);
+      } else if (d.date >= from && d.date <= to) {
+        var isInj = d.type === 'injection';
+        events.push({
+          date: d.date,
+          type: isInj ? 'capital' : 'expense',
+          title: (isInj ? '+ Capital: ' : '- Expense: ') + (d.reason || ''),
+          detail: (d.category || '') + (d.wallet ? ' | ' + d.wallet : ''),
+          wallet: d.wallet || 'Cash',
+          cashIn: isInj ? (d.amount || 0) : 0,
+          cashOut: isInj ? 0 : (d.amount || 0),
+          creditChange: 0
+        });
+      }
+    });
+
+    allTransfers.forEach(function(t) {
+      if (t.date >= from && t.date <= to) {
+        events.push({
+          date: t.date,
+          type: 'transfer',
+          title: 'Transfer: ' + t.from_wallet + ' to ' + t.to_wallet,
+          detail: t.note || 'Wallet transfer',
+          wallet: t.from_wallet + ' to ' + t.to_wallet,
+          cashIn: 0,
+          cashOut: 0,
+          creditChange: 0
+        });
+      }
+    });
+
+    allReturns.forEach(function(ret) {
+      if (ret.date >= from && ret.date <= to) {
+        var items = (ret.items || []).map(function(i){return i.qty+'x '+i.name;}).join(', ');
+        var retTotal = ret.total || 0;
+        // Check if this return was from a credit sale
+        var wasCredit = false;
+        var matchingSale = allSales.find(function(s) {
+          return s.customer_name === ret.customer_name && 
+                 s.date === ret.date && 
+                 (s.balance || 0) > 0;
+        });
+        if (matchingSale || (ret.original_sale_id && allSales.find(function(s){return s.id === ret.original_sale_id && (s.balance||0)>0;}))) {
+          wasCredit = true;
+        }
+        events.push({
+          date: ret.date,
+          type: 'returned',
+          title: 'Return: ' + (ret.customer_name || ''),
+          detail: items + (ret.reason ? ' | ' + ret.reason : ''),
+          wallet: 'Refund',
+          cashIn: 0,
+          cashOut: wasCredit ? 0 : retTotal,
+          creditChange: wasCredit ? -retTotal : 0
+        });
+      }
+    });
+
+    events.sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+    var runningBalance = openingBalance;
+    var runningCredit = openingCredit;
+    var customerBalances = {};
+    var totalCashIn = 0, totalCashOut = 0;
+
+    events.forEach(function(e) {
+      runningBalance += e.cashIn - e.cashOut;
+      runningCredit += e.creditChange;
+      // Track per-customer balance
+      var cust = e.title ? e.title.replace(/^[^:]+:\s*/, '') : '';
+      if (!customerBalances[cust]) customerBalances[cust] = 0;
+      customerBalances[cust] += e.creditChange;
+      if (customerBalances[cust] < 0) customerBalances[cust] = 0;
+      e.custBalance = customerBalances[cust];
+      // Credit cannot go below 0
+      e.balanceAfter = runningBalance;
+      e.creditAfter = runningCredit;
+      e.netAfter = runningBalance + runningCredit;
+      totalCashIn += e.cashIn;
+      totalCashOut += e.cashOut;
+    });
+
+    _data = {
+      events: events,
+      openingBalance: openingBalance,
+      openingCredit: openingCredit,
+      totalCashIn: totalCashIn,
+      totalCashOut: totalCashOut,
+      finalBalance: runningBalance,
+      finalCredit: runningCredit,
+      finalNet: runningBalance + runningCredit,
+      from: from,
+      to: to
+    };
+
+    document.getElementById('stat-in').textContent = fmt(totalCashIn);
+    document.getElementById('stat-out').textContent = fmt(totalCashOut);
+    document.getElementById('stat-net').textContent = fmt(runningBalance + runningCredit);
+
+    var html = '';
+    if (openingBalance !== 0 || openingCredit !== 0) {
+      html += '<div class="act-opening" style="display:grid;grid-template-columns:80px 1fr 70px 70px 90px 80px 80px 80px;gap:8px;align-items:center">';
+      html += '<div class="act-date">Opening</div>';
+      html += '<div class="act-event"><div class="act-event-title">Opening Balance</div></div>';
+      html += '<div class="act-in">' + (openingBalance > 0 ? '+' + fmt(openingBalance) : '') + '</div>';
+      html += '<div class="act-out">' + (openingBalance < 0 ? fmt(Math.abs(openingBalance)) : '') + '</div>';
+      html += '<div class="act-bal">' + fmt(openingBalance) + '</div>';
+      html += '<div class="act-cred">' + (openingCredit > 0 ? fmt(openingCredit) : '') + '</div>';
+      html += '<div class="act-cust-bal" style="text-align:right;color:var(--t3);font-size:11px;">—</div>';
+      html += '<div class="act-net">' + fmt(openingBalance + openingCredit) + '</div>';
+      html += '</div>';
+    }
+
+    if (!events.length) {
+      html += '<div class="empty" style="padding:40px">No transactions for this period</div>';
+    } else {
+      var lastDate = '';
+      events.forEach(function(e) {
+        var dateStr = e.date;
+        try { dateStr = new Date(e.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short'}); } catch(err) {}
+        var showDate = e.date !== lastDate;
+        lastDate = e.date;
+
+        var icon = e.type === 'sale' ? 'Sale' : e.type === 'payment' ? 'Pay' : e.type === 'returned' ? 'Ret' : e.type === 'expense' ? 'Exp' : e.type === 'capital' ? 'Cap' : e.type === 'transfer' ? 'Trf' : '?';
+        var color = e.type === 'expense' ? 'var(--err)' : e.type === 'capital' ? 'var(--ok)' : e.type === 'payment' ? 'var(--ok)' : e.type === 'returned' ? 'var(--err)' : e.type === 'transfer' ? 'var(--info)' : 'var(--t)';
+
+        html += '<div class="act-row">';
+        html += '<div class="act-date">' + (showDate ? dateStr : '') + '</div>';
+        html += '<div class="act-event">';
+        html += '<div class="act-event-title" style="color:' + color + '">' + icon + ': ' + e.title + '</div>';
+        html += '<div class="act-event-wallet">' + e.wallet + (e.detail ? ' | ' + e.detail : '') + '</div>';
+        html += '</div>';
+        html += '<div class="act-in">' + (e.cashIn > 0 ? '+' + fmt(e.cashIn) : '') + '</div>';
+        html += '<div class="act-out">' + (e.cashOut > 0 ? '-' + fmt(e.cashOut) : '') + '</div>';
+        html += '<div class="act-bal">' + fmt(e.balanceAfter) + '</div>';
+        html += '<div class="act-cred">' + (e.custCredit > 0 ? fmt(e.custCredit) : e.creditAfter > 0 ? fmt(e.creditAfter) : '') + '</div>';
+        html += '<div class="act-cust-bal" style="text-align:right;color:var(--info);font-weight:700;font-size:13px;">' + (e.custBalance > 0 ? fmt(e.custBalance) : '') + '</div>';
+        html += '<div class="act-net">' + fmt(e.netAfter) + '</div>';
+        html += '</div>';
+      });
+
+      html += '<div class="act-total-row" style="display:grid;grid-template-columns:80px 1fr 70px 70px 90px 80px 80px 80px;gap:8px;align-items:center">';
+      html += '<div></div><div style="color:var(--t2)">Totals / Final</div>';
+      html += '<div class="act-in">+' + fmt(totalCashIn) + '</div>';
+      html += '<div class="act-out">-' + fmt(totalCashOut) + '</div>';
+      html += '<div class="act-bal">' + fmt(runningBalance) + '</div>';
+      html += '<div class="act-cred">' + (runningCredit > 0 ? fmt(runningCredit) : '') + '</div>';
+      html += '<div class="act-cust-bal" style="text-align:right;color:var(--t3);font-size:11px;">—</div>';
+      html += '<div class="act-net">' + fmt(runningBalance + runningCredit) + '</div>';
+      html += '</div>';
+
+      // Reconciliation check: compare with database totals
+      var dbTotalPaid = allSales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
+      var dbTotalBalance = allSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
+      var calcTotalPaid = openingBalance + totalCashIn - totalCashOut;
+      var calcTotalBalance = runningCredit;
+      var paidDiff = dbTotalPaid - calcTotalPaid;
+      var balanceDiff = dbTotalBalance - calcTotalBalance;
+
+      if (Math.abs(paidDiff) > 1 || Math.abs(balanceDiff) > 1) {
+        html += '<div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--rs);padding:10px 14px;margin-top:8px;font-size:12px;color:var(--err)">';
+        html += '<div style="font-weight:700;margin-bottom:4px">⚠ Reconciliation Issue</div>';
+        if (Math.abs(paidDiff) > 1) html += '<div>Paid mismatch: DB ' + fmt(dbTotalPaid) + ' vs Calc ' + fmt(calcTotalPaid) + ' (diff: ' + fmt(paidDiff) + ')</div>';
+        if (Math.abs(balanceDiff) > 1) html += '<div>Balance mismatch: DB ' + fmt(dbTotalBalance) + ' vs Calc ' + fmt(calcTotalBalance) + ' (diff: ' + fmt(balanceDiff) + ')</div>';
+        html += '<div style="font-size:11px;color:var(--t2);margin-top:4px">This may be from old sales with inconsistent data</div>';
+        html += '</div>';
+      }
+    }
+
+    el.innerHTML = html;
+
+  }).catch(function(e) {
+    el.innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
+  });
+
+  // Debug: log the events to console
+  console.log('Activity Report loaded. Events:', events.length);
+  console.log('Opening balance:', openingBalance, 'Opening credit:', openingCredit);
+  events.forEach(function(e, i) {
+    console.log(i, e.date, e.type, 'CashIn:', e.cashIn, 'CashOut:', e.cashOut, 'CreditChange:', e.creditChange, e.title);
+  });
+}
+
+function exportCSV() {
+  var d = _data;
+  if (!d || !d.events.length) { toast('No data to export', 'err'); return; }
+
+  var rows = [
+    ['LIZ LUXE - ACTIVITY REPORT'],
+    ['Period: ' + d.from + ' to ' + d.to],
+    [],
+    ['Date','Type','Event','Wallet / Detail','Cash In (KES)','Cash Out (KES)','Cash Balance (KES)','Credit Owed (KES)','Cust Balance (KES)','Net Value (KES)']
+  ];
+
+  if (d.openingBalance !== 0 || d.openingCredit !== 0) {
+    rows.push(['Opening','Opening','Opening Balance','','', '', d.openingBalance, d.openingCredit, '', d.openingBalance + d.openingCredit]);
+  }
+
+  d.events.forEach(function(e) {
+    rows.push([e.date, e.type, e.title, e.wallet + (e.detail ? ' | ' + e.detail : ''), e.cashIn || '', e.cashOut || '', e.balanceAfter, e.creditAfter || '', e.custBalance || '', e.netAfter]);
+  });
+
+  rows.push([]);
+  rows.push(['','','','TOTALS', d.totalCashIn, d.totalCashOut, d.finalBalance, d.finalCredit, '', d.finalNet]);
+
+  var csv = rows.map(function(r) {
+    return r.map(function(v) {
+      var val = String(v).replace(/"/g, '""');
+      return val.indexOf(',') >= 0 || val.indexOf('"') >= 0 ? '"' + val + '"' : val;
+    }).join(',');
+  }).join(String.fromCharCode(10));
+
+  var blob = new Blob(['﻿' + csv], {type: 'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'LizLuxe-Activity-' + d.from + '_to_' + d.to + '.csv';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported ' + d.events.length + ' transactions', 'ok');
+}
+
+function shareWhatsApp() {
+  var d = _data;
+  if (!d) { toast('Load data first', 'err'); return; }
+  var msg = '*LIZ LUXE - Activity Report*' + String.fromCharCode(10);
+  msg += 'Period: ' + d.from + ' to ' + d.to + String.fromCharCode(10) + String.fromCharCode(10);
+  msg += '*Summary*' + String.fromCharCode(10);
+  msg += '- Cash In: ' + fmt(d.totalCashIn) + String.fromCharCode(10);
+  msg += '- Cash Out: ' + fmt(d.totalCashOut) + String.fromCharCode(10);
+  msg += '- Final Balance: ' + fmt(d.finalBalance) + String.fromCharCode(10);
+  if (d.finalCredit > 0) msg += '- Credit Owed: ' + fmt(d.finalCredit) + String.fromCharCode(10);
+  var custBalSummary = [];
+  d.events.forEach(function(e) {
+    if (e.custBalance > 0) {
+      var custName = e.title ? e.title.replace(/^[^:]+:\s*/, '') : '';
+      if (custName && custBalSummary.indexOf(custName + ': ' + fmt(e.custBalance)) === -1) {
+        custBalSummary.push(custName + ': ' + fmt(e.custBalance));
+      }
+    }
+  });
+  if (custBalSummary.length > 0) msg += '- Per Customer: ' + custBalSummary.slice(0, 3).join(', ') + (custBalSummary.length > 3 ? '...' : '') + String.fromCharCode(10);
+  msg += '- Net Value: ' + fmt(d.finalNet) + String.fromCharCode(10) + String.fromCharCode(10);
+  msg += '_Liz Luxe POS_';
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+
+function initApp() {
+  var sel = document.getElementById('month-sel');
+  var now = new Date();
+  for (var i = 0; i < 24; i++) {
+    var d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var val = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0');
+    var label = d2.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+    var opt = document.createElement('option');
+    opt.value = val; opt.textContent = label;
+    if (i === 0) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  loadData();
+}
+
+if (loadSession()) {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app-shell').style.display = 'block';
+  initApp();
+}
+</script>
+</body>
+</html>
