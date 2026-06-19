@@ -518,7 +518,7 @@ select option{background:#1c1c1c}
             <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#ff9800;"></div>Split</div><div class="money-row-val" id="mb-split" style="color:#ff9800;">KES 0</div></div>
             <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#607d8b;"></div>Bank</div><div class="money-row-val" id="mb-bank" style="color:#607d8b;">KES 0</div></div>
             <div class="money-total-row">
-              <span style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">Total Collected</span>
+              <span style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">Total Value</span>
               <span style="font-size:18px;font-weight:800;color:var(--gold);" id="mb-total">KES 0</span>
             </div>
           </div>
@@ -528,7 +528,7 @@ select option{background:#1c1c1c}
             <div class="sc"><div class="sl">Capital In</div><div class="sv" id="f-inj" style="color:var(--info)">KES 0</div></div>
             <div class="sc"><div class="sl">Net Balance</div><div class="sv" id="f-bal">KES 0</div></div>
           </div>
-          <div class="info-bar" style="font-size:12px;">Net Balance = Money Collected &minus; Expenses + Capital injected</div>
+          <div class="info-bar" style="font-size:12px;">Net Balance = Revenue Collected &minus; Expenses + Capital Injected</div>
           <div style="display:flex;gap:8px;margin-top:12px;">
             <button class="btn bsm" onclick="openCpModal()" style="flex:1;">&#128274; Change PIN</button>
             <button class="btn bsm bd" onclick="lockFin()" style="flex:1;">Lock Finance</button>
@@ -1960,12 +1960,12 @@ function exportLedger() {
     var s2 = [
       ['LIZ LUXE — DAILY SUMMARY — ' + monthName.toUpperCase()],
       [],
-      ['Date','Sales Count','Revenue (KES)','COGS (KES)','Gross Profit (KES)','Expenses (KES)','Capital In (KES)','Credit Owed (KES)','Net Day (KES)']
+      ['Date','Sales Count','Revenue (KES)','COGS (KES)','Gross Profit (KES)','Expenses (KES)','Capital In (KES)','Credit Owed (KES)','Net Value (KES)']
     ];
     dayOrder.forEach(function(date) {
       var d = dayMap[date];
       var profit = d.sales - d.cogs;
-      var net = d.sales - d.expenses + d.capital;
+      var net = d.sales + d.credit + d.capital - d.expenses;
       s2.push([date, d.salesCount, d.sales, d.cogs, profit, d.expenses, d.capital, d.credit, net]);
     });
 
@@ -3399,23 +3399,25 @@ function renderFin() {
       var pro = rev - cogs;
       var totExp = deds.filter(function(d) { return d.type !== 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
       var totInj = deds.filter(function(d) { return d.type === 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
-      // Net Balance = Cash in hand - what you spent + capital added
-      // i.e. Total Collected - Expenses + Capital Injected
-      var bal = rev - totExp + totInj;
+      // Net Balance = Revenue (Collected) − Expenses + Capital Injected
+      var netBalance = rev - totExp + totInj;
       document.getElementById('f-rev').textContent = fmt(rev);
       document.getElementById('f-pro').textContent = fmt(pro);
       document.getElementById('f-inj').textContent = fmt(totInj);
-      var fb = document.getElementById('f-bal'); fb.textContent = fmt(bal); fb.style.color = bal >= 0 ? 'var(--ok)' : 'var(--err)';
+      var fb = document.getElementById('f-bal'); 
+      fb.textContent = fmt(netBalance); 
+      fb.style.color = netBalance >= 0 ? 'var(--ok)' : 'var(--err)';
 
       // ── Money breakdown by method + wallet adjustments ──
       var mbCash = 0, mbMpesa = 0, mbCard = 0, mbCredit = 0, mbSplit = 0, mbBank = 0;
       sales.forEach(function(s) {
         var p = s.paid || 0;
+        var bal = s.balance || 0;
         var m = (s.method || '').toLowerCase();
+        // Distribute PAID amount by payment method
         if (m === 'cash') mbCash += p;
         else if (m === 'm-pesa' || m === 'mpesa') mbMpesa += p;
         else if (m === 'card') mbCard += p;
-        else if (m === 'credit') mbCredit += (s.balance || 0);
         else if (m === 'bank') mbBank += p;
         else if (m === 'split') {
           // Parse split_details to distribute correctly e.g. "Cash KES 200 + M-Pesa KES 300"
@@ -3429,6 +3431,8 @@ function renderFin() {
           // If we couldn't parse, fall back to split bucket
           if (!cashM && !mpesaM && !cardM) mbSplit += p;
         }
+        // Count ALL outstanding balances as credit, regardless of original payment method
+        if (bal > 0) mbCredit += bal;
       });
       // Add partial payments from payment_log
       sales.forEach(function(s) {
@@ -3445,14 +3449,17 @@ function renderFin() {
       mbCash += adj['Cash'] || 0;
       mbMpesa += adj['M-Pesa'] || 0;
       mbBank += adj['Bank'] || 0;
+      // Total Collected = Cash + M-Pesa + Card + Bank + Split (actual money in hand)
       var mbTotal = mbCash + mbMpesa + mbCard + mbSplit + mbBank;
+      // Total Business Value = Total Collected + Credit Owed + Capital (matching Excel)
+      var totalValue = mbTotal + mbCredit + totInj;
       document.getElementById('mb-cash').textContent = fmt(Math.max(0, mbCash));
       document.getElementById('mb-mpesa').textContent = fmt(Math.max(0, mbMpesa));
       document.getElementById('mb-card').textContent = fmt(Math.max(0, mbCard));
       document.getElementById('mb-credit').textContent = fmt(mbCredit);
       document.getElementById('mb-split').textContent = fmt(Math.max(0, mbSplit));
       document.getElementById('mb-bank').textContent = fmt(Math.max(0, mbBank));
-      document.getElementById('mb-total').textContent = fmt(mbTotal);
+      document.getElementById('mb-total').textContent = fmt(totalValue);
       // Render transfer log
       renderTransferLog();
       var lg = document.getElementById('fin-log');
