@@ -457,6 +457,7 @@ select option{background:#1c1c1c}
       <div style="display:flex;gap:8px;margin-bottom:12px;">
         <button class="dpill active" id="cf-all" onclick="setCustFilter(this,'all')">All</button>
         <button class="dpill" id="cf-debt" onclick="setCustFilter(this,'debt')">&#128308; Has Balance</button>
+        <button class="dpill" id="cf-overdue" onclick="setCustFilter(this,'overdue')">&#128308; Overdue</button>
       </div>
       <div id="cust-list"><div class="empty">Loading...</div></div>
     </div>
@@ -503,6 +504,15 @@ select option{background:#1c1c1c}
               <div class="daily-cell"><div class="daily-val" id="fd-cnt" style="color:var(--t)">0</div><div class="daily-lbl">Sales</div></div>
             </div>
           </div>
+          <div class="daily-summary" id="fin-overdue" style="background:linear-gradient(135deg,rgba(244,67,54,.15),rgba(244,67,54,.05));border-color:rgba(244,67,54,.2);display:none;">
+            <div class="daily-summary-title" style="color:var(--err);">&#128308; Overdue Credit</div>
+            <div class="daily-grid">
+              <div class="daily-cell"><div class="daily-val" id="fo-amt" style="color:var(--err)">KES 0</div><div class="daily-lbl">Total Owed</div></div>
+              <div class="daily-cell"><div class="daily-val" id="fo-cnt" style="color:var(--err)">0</div><div class="daily-lbl">Customers</div></div>
+              <div class="daily-cell"><div class="daily-val" id="fo-avg" style="color:var(--t)">0d</div><div class="daily-lbl">Avg Days Overdue</div></div>
+            </div>
+            <button class="btn bsm" onclick="showTab('debtors', document.querySelector('.bni[data-tab=debtors]')); setCustFilter(document.getElementById('cf-overdue'), 'overdue');" style="margin-top:10px;background:var(--err-bg);color:var(--err);border-color:rgba(224,96,96,.3);width:100%;">View Overdue Customers</button>
+          </div>
           <div class="fin-date-pills">
             <button class="dpill active" id="fp-all" onclick="setFinFilter(this,'all')">All Time</button>
             <button class="dpill" onclick="setFinFilter(this,'today')">Today</button>
@@ -522,13 +532,18 @@ select option{background:#1c1c1c}
               <span style="font-size:18px;font-weight:800;color:var(--gold);" id="mb-total">KES 0</span>
             </div>
           </div>
-          <div class="sg">
+          <div class="sg" style="grid-template-columns:1fr 1fr 1fr 1fr;">
             <div class="sc"><div class="sl">Revenue</div><div class="sv" id="f-rev" style="color:var(--gold)">KES 0</div></div>
-            <div class="sc"><div class="sl">Profit</div><div class="sv" id="f-pro" style="color:var(--ok)">KES 0</div></div>
+            <div class="sc"><div class="sl">Gross Profit</div><div class="sv" id="f-gross" style="color:var(--ok)">KES 0</div></div>
+            <div class="sc"><div class="sl">Cash Profit</div><div class="sv" id="f-cash" style="color:#6aabf0">KES 0</div></div>
+            <div class="sc"><div class="sl">Credit Exposure</div><div class="sv" id="f-credit" style="color:var(--err)">KES 0</div></div>
+          </div>
+          <div class="sg" style="margin-top:8px;">
             <div class="sc"><div class="sl">Capital In</div><div class="sv" id="f-inj" style="color:var(--info)">KES 0</div></div>
             <div class="sc"><div class="sl">Net Balance</div><div class="sv" id="f-bal">KES 0</div></div>
           </div>
-          <div class="info-bar" style="font-size:12px;">Net Balance = Revenue Collected &minus; Expenses + Capital Injected</div>
+          <div class="info-bar" style="font-size:12px;">Gross Profit = All Sales − COGS · Cash Profit = Collected − COGS · Net Balance = Collected − Expenses + Capital</div>
+          <div id="data-integrity-warn" style="display:none;background:var(--err-bg);border:1px solid rgba(224,96,96,.3);border-radius:var(--rs);padding:10px 14px;margin-top:10px;font-size:12px;color:var(--err);font-weight:600;"></div>
           <div style="display:flex;gap:8px;margin-top:12px;">
             <button class="btn bsm" onclick="openCpModal()" style="flex:1;">&#128274; Change PIN</button>
             <button class="btn bsm bd" onclick="lockFin()" style="flex:1;">Lock Finance</button>
@@ -639,7 +654,7 @@ select option{background:#1c1c1c}
     <button class="bni active" data-tab="inventory" onclick="showTab('inventory',this)"><span class="bni-icon">&#128230;</span><span class="bni-label">Inventory</span></button>
     <button class="bni" data-tab="sales" onclick="showTab('sales',this)"><span class="bni-icon">&#128717;</span><span class="bni-label">New Sale</span><span class="dot" id="cart-dot"></span></button>
     <button class="bni" data-tab="history" onclick="showTab('history',this)"><span class="bni-icon">&#128203;</span><span class="bni-label">History</span></button>
-    <button class="bni" data-tab="debtors" onclick="showTab('debtors',this)"><span class="bni-icon">&#128100;</span><span class="bni-label">Customers</span><span class="dot" id="debt-dot"></span></button>
+    <button class="bni" data-tab="debtors" onclick="showTab('debtors',this)"><span class="bni-icon">&#128100;</span><span class="bni-label">Customers</span><span class="dot" id="debt-dot"></span><span class="dot" id="overdue-dot" style="background:#ff5722;right:calc(50% - 22px);display:none;"></span></button>
     <button class="bni" data-tab="finance" onclick="showTab('finance',this)"><span class="bni-icon">&#128176;</span><span class="bni-label">Finance</span></button>
   </nav>
 </div>
@@ -940,23 +955,60 @@ function doLogin() {
   var err = document.getElementById('login-err');
   if (!email || !password) { err.textContent = 'Please enter email and password.'; return; }
   btn.disabled = true; btn.textContent = 'Signing in...'; err.textContent = '';
-  fetch(SB_AUTH + '/token?grant_type=password', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY},
-    body: JSON.stringify({email: email, password: password})
-  }).then(function(r) { return r.json(); }).then(function(d) {
-    if (d.access_token) {
-      saveSession(d.access_token, d.refresh_token);
-      document.getElementById('login-screen').classList.add('hidden');
-      initApp();
-    } else {
-      err.textContent = d.error_description || d.msg || 'Invalid email or password.';
+
+  // Try the modern Supabase auth endpoint first, fallback to legacy
+  var endpoints = [
+    SB_AUTH + '/token?grant_type=password',
+    'https://atydgofseradfblzrdbn.supabase.co/auth/v1/token?grant_type=password'
+  ];
+
+  function tryLogin(endpointIndex) {
+    if (endpointIndex >= endpoints.length) {
+      err.textContent = 'All auth endpoints failed. Check Supabase status.';
       btn.disabled = false; btn.textContent = 'Sign In';
+      return;
     }
-  }).catch(function() {
-    err.textContent = 'Network error. Check your connection.';
-    btn.disabled = false; btn.textContent = 'Sign In';
-  });
+
+    fetch(endpoints[endpointIndex], {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY},
+      body: JSON.stringify({email: email, password: password})
+    }).then(function(r) {
+      // Check for HTTP errors
+      if (!r.ok) {
+        return r.json().then(function(d) {
+          throw new Error(d.error_description || d.message || d.msg || 'HTTP ' + r.status);
+        }).catch(function(e) {
+          if (e.message.indexOf('HTTP') === 0) throw e;
+          throw new Error('HTTP ' + r.status + ' — ' + (r.statusText || 'Auth failed'));
+        });
+      }
+      return r.json();
+    }).then(function(d) {
+      if (d.access_token) {
+        saveSession(d.access_token, d.refresh_token);
+        document.getElementById('login-screen').classList.add('hidden');
+        initApp();
+      } else if (d.session && d.session.access_token) {
+        // Newer Supabase response format
+        saveSession(d.session.access_token, d.session.refresh_token);
+        document.getElementById('login-screen').classList.add('hidden');
+        initApp();
+      } else {
+        throw new Error(d.error_description || d.msg || 'No access token returned');
+      }
+    }).catch(function(e) {
+      if (endpointIndex === 0) {
+        // Try fallback endpoint
+        tryLogin(1);
+      } else {
+        err.textContent = e.message || 'Network error. Check your connection.';
+        btn.disabled = false; btn.textContent = 'Sign In';
+      }
+    });
+  }
+
+  tryLogin(0);
 }
 
 function doLogout() {
@@ -1166,6 +1218,15 @@ function checkLow() {
   var n = inv.filter(function(i) { return i.remaining < 3; }).length;
   document.getElementById('low-count').textContent = n;
   document.getElementById('low-badge').className = n > 0 ? 'low-badge on' : 'low-badge';
+}
+
+function updateOverdueBadge() {
+  var today = new Date().toISOString().slice(0, 10);
+  var overdueCount = allCustomerSales.filter(function(s) {
+    return (s.balance || 0) > 0 && s.due_date && s.due_date < today;
+  }).length;
+  var dot = document.getElementById('overdue-dot');
+  if (dot) dot.style.display = overdueCount > 0 ? 'block' : 'none';
 }
 
 function buildPills() {
@@ -2849,7 +2910,13 @@ function completeSale() {
   var items = cart.map(function(c) { return {id: c.id, name: c.name, qty: c.qty, selling_price: c.sp, buying_price: c.bp}; });
   lastReceiptRef = genRef();
   var phone = document.getElementById('sale-phone').value.trim();
-var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0, customer_phone: phone || null};
+var dueDate = null;
+  if (method === 'Credit') {
+    var d = new Date(date);
+    d.setDate(d.getDate() + 14); // 14-day credit terms
+    dueDate = d.toISOString().slice(0, 10);
+  }
+  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0, customer_phone: phone || null, due_date: dueDate};
   if (splitDetails) saleData.split_details = splitDetails;
 
   dbPost('sales', saleData)
@@ -2996,6 +3063,7 @@ function fetchCustomerPage(reset) {
     else allCustomerSales = allCustomerSales.concat(sales);
     custHasMore = sales.length === custPageSize;
     document.getElementById('debt-dot').classList.toggle('on', allCustomerSales.some(function(s) { return s.balance > 0; }));
+    updateOverdueBadge();
     filterCustomers();
   }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
 }
@@ -3018,11 +3086,49 @@ function filterCustomers() {
     map[n].balance += s.balance || 0;
     if (!map[n].lastDate || s.date > map[n].lastDate) map[n].lastDate = s.date;
   });
+  var today = new Date().toISOString().slice(0, 10);
   var keys = Object.keys(map).filter(function(n) {
     var matchQ = !q || n.toLowerCase().indexOf(q) >= 0;
-    var matchF = custFilterMode === 'all' || (custFilterMode === 'debt' && map[n].balance > 0);
+    var matchF = true;
+    if (custFilterMode === 'debt') matchF = map[n].balance > 0;
+    else if (custFilterMode === 'overdue') {
+      matchF = map[n].sales.some(function(s) {
+        if ((s.balance || 0) <= 0) return false;
+        var dueDate = s.due_date;
+        if (!dueDate) {
+          var d = new Date(s.date);
+          d.setDate(d.getDate() + 14);
+          dueDate = d.toISOString().slice(0, 10);
+        }
+        return dueDate < today;
+      });
+    }
     return matchQ && matchF;
-  }).sort(function(a, b) { return map[b].totalSpent - map[a].totalSpent; });
+  }).sort(function(a, b) {
+    if (custFilterMode === 'overdue') {
+      // Sort by most overdue first
+      var getOldestDue = function(name) {
+        var sales = map[name].sales.filter(function(s) {
+          if ((s.balance || 0) <= 0) return false;
+          var dueDate = s.due_date;
+          if (!dueDate) {
+            var d = new Date(s.date);
+            d.setDate(d.getDate() + 14);
+            dueDate = d.toISOString().slice(0, 10);
+          }
+          return dueDate < today;
+        });
+        if (!sales.length) return '9999-99-99';
+        return sales.sort(function(x, y) {
+          var dx = x.due_date || new Date(new Date(x.date).getTime() + 14*86400000).toISOString().slice(0,10);
+          var dy = y.due_date || new Date(new Date(y.date).getTime() + 14*86400000).toISOString().slice(0,10);
+          return dx.localeCompare(dy);
+        })[0].due_date || sales[0].date;
+      };
+      return getOldestDue(a).localeCompare(getOldestDue(b));
+    }
+    return map[b].totalSpent - map[a].totalSpent;
+  });
   var el = document.getElementById('cust-list');
   if (!keys.length) { el.innerHTML = '<div class="empty">No customers found</div>'; return; }
   window._custMap = map;
@@ -3040,7 +3146,29 @@ function filterCustomers() {
     html += '<span style="font-weight:700;font-size:15px;">' + escHtml(name) + '</span>';
     if (hasDebt) html += '<span class="debt-badge">Owes ' + fmt(c.balance) + '</span>';
     html += '</div>';
-    html += '<div style="font-size:12px;color:var(--t2);">' + c.sales.length + ' purchase' + (c.sales.length !== 1 ? 's' : '') + ' &middot; Last: ' + (c.lastDate || '—') + '</div>';
+    var today2 = new Date().toISOString().slice(0, 10);
+    var overdueSales = c.sales.filter(function(s) {
+      if ((s.balance || 0) <= 0) return false;
+      var dueDate = s.due_date;
+      if (!dueDate) {
+        var d = new Date(s.date);
+        d.setDate(d.getDate() + 14);
+        dueDate = d.toISOString().slice(0, 10);
+      }
+      return dueDate < today2;
+    });
+    var overdueLabel = '';
+    if (overdueSales.length > 0) {
+      var oldestDue = overdueSales.sort(function(x, y) {
+        var dx = x.due_date || new Date(new Date(x.date).getTime() + 14*86400000).toISOString().slice(0,10);
+        var dy = y.due_date || new Date(new Date(y.date).getTime() + 14*86400000).toISOString().slice(0,10);
+        return dx.localeCompare(dy);
+      })[0];
+      var oldestDueDate = oldestDue.due_date || new Date(new Date(oldestDue.date).getTime() + 14*86400000).toISOString().slice(0,10);
+      var daysOverdue = Math.floor((new Date(today2) - new Date(oldestDueDate)) / (1000 * 60 * 60 * 24));
+      overdueLabel = ' &middot; <span style="color:var(--err);font-weight:700;">' + daysOverdue + 'd overdue</span>';
+    }
+    html += '<div style="font-size:12px;color:var(--t2);">' + c.sales.length + ' purchase' + (c.sales.length !== 1 ? 's' : '') + ' &middot; Last: ' + (c.lastDate || '—') + overdueLabel + '</div>';
     html += '</div>';
     html += '<div style="text-align:right;flex-shrink:0;"><div style="font-size:15px;font-weight:800;color:var(--gold);">' + fmt(c.totalSpent) + '</div>';
     html += '<div style="font-size:10px;color:var(--t2);">total spent</div></div>';
@@ -3060,8 +3188,19 @@ function loadMoreCustomers() {
 var _cdSales = [], _cdPayMethod = 'Cash';
 
 function openCustDetail(name) {
-  _cdSales = allCustomerSales.filter(function(s) { return s.customer_name === name; })
-    .sort(function(a, b) { return b.date.localeCompare(a.date); });
+  // Fetch ALL sales for this customer (not just paginated ones)
+  dbGet('sales', '?customer_name=eq.' + encodeURIComponent(name) + '&order=date.desc').then(function(allCustSales) {
+    _cdSales = allCustSales || [];
+    renderCustDetail(name);
+  }).catch(function() {
+    // Fallback to paginated data if fetch fails
+    _cdSales = allCustomerSales.filter(function(s) { return s.customer_name === name; })
+      .sort(function(a, b) { return b.date.localeCompare(a.date); });
+    renderCustDetail(name);
+  });
+}
+
+function renderCustDetail(name) {
   var orderTotal = _cdSales.reduce(function(s, x) { return s + (x.total || 0); }, 0);
   var totalPaid  = _cdSales.reduce(function(s, x) { return s + (x.paid  || 0); }, 0);
   var balance    = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
@@ -3232,6 +3371,7 @@ function cdMarkFullyPaid() {
   }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
+
 function closeCustDetail() {
   document.getElementById('cust-detail-overlay').classList.remove('on');
 }
@@ -3243,6 +3383,36 @@ function togglePhoneEdit() {
   wrap.style.display = isEditing ? 'none' : 'block';
   actions.style.display = isEditing ? 'flex' : 'none';
   if (!isEditing) document.getElementById('cd-phone-input').focus();
+}
+
+function getOverdueReminderText(name, balance, daysOverdue) {
+  // Build item list from all unpaid sales
+  var items = [];
+  _cdSales.forEach(function(s) {
+    if ((s.balance || 0) > 0) {
+      (s.items || []).forEach(function(i) {
+        items.push(i.qty + 'x ' + i.name + ' — ' + fmt(i.selling_price * i.qty));
+      });
+    }
+  });
+  var itemList = items.slice(0, 10).join('\n');
+  if (items.length > 10) itemList += '\n... and ' + (items.length - 10) + ' more items';
+
+  var msg = 'Hi ' + name + ', this is Liz Luxe.\n\n';
+  msg += 'Your balance of *' + fmt(balance) + '* is now *' + daysOverdue + ' days overdue*.\n\n';
+  if (itemList) msg += '*Items:*\n' + itemList + '\n\n';
+  if (daysOverdue > 21) {
+    msg += '⚠️ FINAL NOTICE: Please settle immediately to avoid further action.\n\n';
+  } else if (daysOverdue > 14) {
+    msg += 'This is an urgent reminder. Your payment is significantly overdue.\n\n';
+  } else if (daysOverdue > 7) {
+    msg += 'This is a friendly reminder. Please pay soon to keep your account in good standing.\n\n';
+  } else {
+    msg += 'Just a heads up — your payment is now due.\n\n';
+  }
+  msg += 'M-Pesa: 0795060967 - Simon\n\n';
+  msg += '✨ _Thank you for shopping with Liz Luxe_ ✨';
+  return msg;
 }
 
 function sendCustReminder() {
@@ -3263,12 +3433,24 @@ function sendCustReminder() {
   var itemList = items.slice(0, 5).join('\n');
   if (items.length > 5) itemList += '\n... and ' + (items.length - 5) + ' more';
 
-  var msg = 'Hi ' + name + ', this is Liz Luxe.\n\n';
-  msg += 'Your outstanding balance is *' + fmt(balance) + '*.\n\n';
-  if (itemList) msg += 'Items:\n' + itemList + '\n\n';
-  msg += 'Please pay at your earliest convenience.\n';
-  msg += 'M-Pesa: 0795060967 - Simon\n\n';
-  msg += '✨ _Thank you for shopping with Liz Luxe_ ✨';
+  var today = new Date().toISOString().slice(0, 10);
+  var overdueSales = _cdSales.filter(function(s) { return (s.balance || 0) > 0 && s.due_date && s.due_date < today; });
+  var daysOverdue = 0;
+  if (overdueSales.length > 0) {
+    var oldestDue = overdueSales.sort(function(x, y) { return x.due_date.localeCompare(y.due_date); })[0].due_date;
+    daysOverdue = Math.floor((new Date(today) - new Date(oldestDue)) / (1000 * 60 * 60 * 24));
+  }
+  var msg;
+  if (daysOverdue > 0) {
+    msg = getOverdueReminderText(name, balance, daysOverdue);
+  } else {
+    msg = 'Hi ' + name + ', this is Liz Luxe.\n\n';
+    msg += 'Your outstanding balance is *' + fmt(balance) + '*.\n\n';
+    if (itemList) msg += 'Items:\n' + itemList + '\n\n';
+    msg += 'Please pay at your earliest convenience.\n';
+    msg += 'M-Pesa: 0795060967 - Simon\n\n';
+    msg += '✨ _Thank you for shopping with Liz Luxe_ ✨';
+  }
 
   if (phone) {
     // Clean phone number for WhatsApp
@@ -3361,7 +3543,7 @@ function renderFin() {
   var now = new Date();
 
   // Build server-side date filter for selected period
-  var salesQuery = '?select=paid,items,balance,date,method,payment_log,split_details';
+  var salesQuery = '?select=total,paid,items,balance,date,method,payment_log,split_details';
   var dedQuery = '?order=created_at.desc';
   if (finDateFilter === 'today') {
     salesQuery += '&date=eq.' + today;
@@ -3382,7 +3564,7 @@ function renderFin() {
   Promise.all([
     dbGet('sales', salesQuery),
     dbGet('deductions', dedQuery),
-    finDateFilter !== 'today' ? dbGet('sales', '?select=paid,items,date&date=eq.' + today + '') : Promise.resolve(null)
+    finDateFilter !== 'today' ? dbGet('sales', '?select=total,paid,items,date&date=eq.' + today + '') : Promise.resolve(null)
   ]).then(function(r) {
       var allSalesData = r[0], deds = r[1];
       // Daily summary card
@@ -3392,17 +3574,64 @@ function renderFin() {
       document.getElementById('fd-rev').textContent = fmt(dayRev);
       document.getElementById('fd-pro').textContent = fmt(dayRev - dayCogs);
       document.getElementById('fd-cnt').textContent = todaySales.length;
+
+      // Overdue summary
+      var overdueSales = allSalesData.filter(function(s) {
+        return (s.balance || 0) > 0 && s.due_date && s.due_date < today;
+      });
+      var overdueCard = document.getElementById('fin-overdue');
+      if (overdueSales.length > 0) {
+        overdueCard.style.display = 'block';
+        var overdueTotal = overdueSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
+        var overdueCustomers = {};
+        var totalDays = 0;
+        overdueSales.forEach(function(s) {
+          overdueCustomers[s.customer_name] = 1;
+          totalDays += Math.floor((new Date(today) - new Date(s.due_date)) / (1000 * 60 * 60 * 24));
+        });
+        document.getElementById('fo-amt').textContent = fmt(overdueTotal);
+        document.getElementById('fo-cnt').textContent = Object.keys(overdueCustomers).length;
+        document.getElementById('fo-avg').textContent = Math.round(totalDays / overdueSales.length) + 'd';
+      } else {
+        overdueCard.style.display = 'none';
+      }
       // All sales already filtered server-side
       var sales = allSalesData;
       var rev = sales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
       var cogs = sales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
-      var pro = rev - cogs;
       var totExp = deds.filter(function(d) { return d.type !== 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
       var totInj = deds.filter(function(d) { return d.type === 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
+
+      // Gross Profit: earned on ALL sales (total - cogs), regardless of payment status
+      var grossTotal = sales.reduce(function(s, x) { return s + (x.total || 0); }, 0);
+      var grossProfit = grossTotal - cogs;
+      // Cash Profit: only from money actually collected
+      var cashProfit = rev - cogs;
+      // Credit exposure: what was sold but not yet paid for
+      var creditExposure = grossTotal - rev;
+      // Data integrity: check if stored balance matches calculated (total - paid)
+      var balanceMismatch = sales.reduce(function(s, x) {
+        var calcBal = Math.round(((x.total || 0) - (x.paid || 0)) * 100) / 100;
+        var storedBal = Math.round((x.balance || 0) * 100) / 100;
+        return s + (calcBal - storedBal);
+      }, 0);
+
       // Net Balance = Revenue (Collected) − Expenses + Capital Injected
       var netBalance = rev - totExp + totInj;
+
       document.getElementById('f-rev').textContent = fmt(rev);
-      document.getElementById('f-pro').textContent = fmt(pro);
+      document.getElementById('f-gross').textContent = fmt(grossProfit);
+      document.getElementById('f-cash').textContent = fmt(cashProfit);
+      document.getElementById('f-credit').textContent = fmt(creditExposure);
+
+      // Show data integrity warning if mismatch detected
+      var warnEl = document.getElementById('data-integrity-warn');
+      if (Math.abs(balanceMismatch) > 0.01) {
+        warnEl.style.display = 'block';
+        warnEl.innerHTML = '⚠️ Data mismatch: Credit Exposure (' + fmt(creditExposure) + ') ≠ Credit Owed (' + fmt(creditExposure - balanceMismatch) + '). <a href="#" onclick="fixBalanceMismatch();return false;" style="color:var(--gold);text-decoration:underline;">Fix now</a>';
+      } else {
+        warnEl.style.display = 'none';
+      }
       document.getElementById('f-inj').textContent = fmt(totInj);
       var fb = document.getElementById('f-bal'); 
       fb.textContent = fmt(netBalance); 
@@ -3591,6 +3820,24 @@ function renderTransferLog() {
     html += '</div><span style="color:var(--t2);font-size:11px;">' + t.date + '</span></div>';
   });
   el.innerHTML = html;
+}
+
+function fixBalanceMismatch() {
+  if (!confirm('This will recalculate all balance fields to match total − paid. Proceed?')) return;
+  dbGet('sales', '?select=id,total,paid,balance').then(function(sales) {
+    var ps = [];
+    sales.forEach(function(s) {
+      var calcBal = Math.max(0, Math.round(((s.total || 0) - (s.paid || 0)) * 100) / 100);
+      var storedBal = Math.round((s.balance || 0) * 100) / 100;
+      if (Math.abs(calcBal - storedBal) > 0.01) {
+        ps.push(dbPatch('sales', {balance: calcBal}, '?id=eq.' + s.id));
+      }
+    });
+    return Promise.all(ps).then(function() {
+      toast('Fixed ' + ps.length + ' records ✓', 'ok');
+      renderFin();
+    });
+  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
 }
 
 function getWalletAdjustments() {
