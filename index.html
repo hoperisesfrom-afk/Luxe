@@ -289,6 +289,7 @@ select option{background:#1c1c1c}
 .ldsum-lbl{color:var(--t2);}
 .ldsum-val{font-weight:700;}
 </style>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -545,6 +546,7 @@ select option{background:#1c1c1c}
           <div class="info-bar" style="font-size:12px;">Gross Profit = All Sales − COGS · Cash Profit = Collected − COGS · Net Balance = Collected − Expenses + Capital</div>
           <div id="data-integrity-warn" style="display:none;background:var(--err-bg);border:1px solid rgba(224,96,96,.3);border-radius:var(--rs);padding:10px 14px;margin-top:10px;font-size:12px;color:var(--err);font-weight:600;"></div>
           <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn bsm" onclick="manualBackup()" style="flex:1;background:var(--info-bg);color:var(--info);border-color:rgba(106,171,240,.3);">&#128190; Backup Now</button>
             <button class="btn bsm" onclick="openCpModal()" style="flex:1;">&#128274; Change PIN</button>
             <button class="btn bsm bd" onclick="lockFin()" style="flex:1;">Lock Finance</button>
           </div>
@@ -637,6 +639,11 @@ select option{background:#1c1c1c}
               <div style="font-size:28px;margin-bottom:8px;">&#128465;</div>
               <div style="font-size:13px;font-weight:700;color:var(--t2);">Recycle Bin</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Deleted items &amp; sales</div>
+            </button>
+            <button onclick="showRestoreModal()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#8617;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--gold);">Restore Backup</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Upload JSON backup file</div>
             </button>
             <button onclick="window.open('activity-report.html', '_blank')" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
               <div style="font-size:28px;margin-bottom:8px;">&#128200;</div>
@@ -4213,6 +4220,18 @@ function backfillReceiptRefs() {
   }).catch(function() {});
 }
 
+
+// ══ EmailJS Setup ══
+// Replace YOUR_PUBLIC_KEY with your actual EmailJS public key from Account → API Keys
+var EMAILJS_PUBLIC_KEY = 'l0LhABXsrkpM2ecB';  // Your EmailJS public key
+var EMAILJS_SERVICE_ID = 'service_dxlps6j';       // From your screenshot
+var EMAILJS_TEMPLATE_ID = 'template_backup';     // Create this template in EmailJS dashboard
+
+// Initialize EmailJS
+if (typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY_HERE') {
+  emailjs.init({publicKey: EMAILJS_PUBLIC_KEY});
+}
+
 function initApp() {
   initDate();
   showTab('inventory', document.querySelector('.bni[data-tab=inventory]'));
@@ -4572,6 +4591,372 @@ function initDate() {
   if (el && !el.value) el.value = today;
 }
 
+
+// ══ AUTO BACKUP SYSTEM ══
+var BACKUP_HOUR = 22; // 10 PM
+var BACKUP_KEY = 'll_last_backup';
+
+function checkAutoBackup() {
+  var now = new Date();
+  var today = now.toISOString().slice(0, 10);
+  var lastBackup = localStorage.getItem(BACKUP_KEY);
+
+  // Only backup once per day, at or after 10 PM
+  if (lastBackup === today) return; // Already backed up today
+  if (now.getHours() < BACKUP_HOUR) return; // Too early
+
+  performBackup();
+}
+
+function performBackup() {
+  var today = new Date().toISOString().slice(0, 10);
+  toast('Creating backup...', 'ok');
+
+  Promise.all([
+    dbGet('sales', '?order=date.desc&limit=1000'),
+    dbGet('deductions', '?order=date.desc&limit=500'),
+    dbGet('inventory', '?order=name.asc'),
+    dbGet('transfers', '?order=id.desc&limit=200'),
+    dbGet('returns', '?order=date.desc&limit=200')
+  ]).then(function(r) {
+    var backup = {
+      date: today,
+      version: '1.2',
+      exported_at: new Date().toISOString(),
+      sales_count: r[0].length,
+      deductions_count: r[1].length,
+      inventory_count: r[2].length,
+      transfers_count: r[3].length,
+      returns_count: r[4].length,
+      deleted_records_count: r[5].length,
+      sales: r[0],
+      deductions: r[1],
+      inventory: r[2],
+      transfers: r[3],
+      returns: r[4],
+      deleted_records: r[5]
+    };
+
+    // Save to localStorage
+    var json = JSON.stringify(backup);
+    try {
+      localStorage.setItem('ll_backup_' + today, json);
+      localStorage.setItem(BACKUP_KEY, today);
+    } catch(e) {
+      // localStorage full — clear old backups
+      cleanupOldBackups();
+      try { localStorage.setItem('ll_backup_' + today, json); } catch(e2) {}
+    }
+
+    // Auto-download JSON file
+    var blob = new Blob([json], {type: 'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'LizLuxe-Backup-' + today + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Show backup notification with share options
+    showBackupNotification(backup);
+
+    toast('Backup saved: ' + r[0].length + ' sales, ' + r[2].length + ' items', 'ok');
+  }).catch(function(e) {
+    toast('Backup failed: ' + e.message, 'err');
+  });
+}
+
+function cleanupOldBackups() {
+  var keys = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    var key = localStorage.key(i);
+    if (key && key.startsWith('ll_backup_') && key !== BACKUP_KEY) {
+      keys.push(key);
+    }
+  }
+  // Sort by date and keep only last 7
+  keys.sort();
+  keys.slice(0, -7).forEach(function(k) { localStorage.removeItem(k); });
+}
+
+function showBackupNotification(backup) {
+  // Create a modal to share backup
+  var existing = document.getElementById('backup-modal');
+  if (existing) existing.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'backup-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = '<div style="background:var(--s);border:1px solid var(--b);border-radius:var(--r);padding:24px;width:100%;max-width:340px;text-align:center;">' +
+    '<div style="font-size:28px;margin-bottom:12px;">&#128190;</div>' +
+    '<div style="font-size:16px;font-weight:700;color:var(--gold);margin-bottom:8px;">Backup Complete</div>' +
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:16px;">' + backup.date + '<br>' + 
+    backup.sales_count + ' sales · ' + backup.inventory_count + ' items</div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px;">' +
+    '<button onclick="shareBackupWhatsApp(' + backup.sales_count + ',' + backup.inventory_count + ')" style="padding:12px;background:var(--ok-bg);color:var(--ok);border:1px solid rgba(123,201,80,.3);border-radius:var(--rs);font-weight:700;cursor:pointer;">&#128232; WhatsApp Summary</button>' +
+    '<button onclick="emailBackup(' + backup.sales_count + ',' + backup.inventory_count + ')" style="padding:12px;background:var(--info-bg);color:var(--info);border:1px solid rgba(106,171,240,.3);border-radius:var(--rs);font-weight:700;cursor:pointer;">&#9993; Email Summary</button>' +
+    '<button onclick="showRestoreModal()" style="padding:12px;background:var(--gold-bg);color:var(--gold);border:1px solid var(--b);border-radius:var(--rs);font-weight:700;cursor:pointer;">&#8617; Restore Backup</button>' +
+    '<button onclick="document.getElementById(\'backup-modal\').remove()" style="padding:12px;background:var(--s3);color:var(--t2);border:1px solid var(--b);border-radius:var(--rs);font-weight:600;cursor:pointer;">Dismiss</button>' +
+    '</div></div>';
+  document.body.appendChild(modal);
+}
+
+function shareBackupWhatsApp(salesCount, invCount) {
+  var today = new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'});
+  var msg = 'Liz Luxe Daily Backup — ' + today + '\n\n';
+  msg += '📊 Sales: ' + salesCount + ' records\n';
+  msg += '📦 Inventory: ' + invCount + ' items\n';
+  msg += '💾 File: LizLuxe-Backup-' + new Date().toISOString().slice(0,10) + '.json\n\n';
+  msg += 'Saved to Downloads folder.\n';
+  msg += 'Upload to Google Drive for cloud backup.';
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+  document.getElementById('backup-modal').remove();
+}
+
+function emailBackup(salesCount, invCount) {
+  var today = new Date().toLocaleDateString('en-KE', {day:'numeric', month:'long', year:'numeric'});
+  var dateStr = new Date().toISOString().slice(0,10);
+
+  // Check if EmailJS is configured
+  if (EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY_HERE' || typeof emailjs === 'undefined') {
+    // Fallback to mailto if EmailJS not set up
+    var subject = 'Liz Luxe Backup — ' + today;
+    var body = 'Liz Luxe Daily Backup\n\n';
+    body += 'Date: ' + today + '\n';
+    body += 'Sales: ' + salesCount + ' records\n';
+    body += 'Inventory: ' + invCount + ' items\n\n';
+    body += 'The backup file LizLuxe-Backup-' + dateStr + '.json\n';
+    body += 'has been saved to your Downloads folder.\n\n';
+    body += 'Please attach it to this email and send to yourself for safekeeping.';
+    window.open('mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body), '_blank');
+    document.getElementById('backup-modal').remove();
+    return;
+  }
+
+  // Show sending status
+  var btn = event.target;
+  var originalText = btn.innerHTML;
+  btn.innerHTML = '⏳ Sending...';
+  btn.disabled = true;
+
+  // Send via EmailJS
+  emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+    to_email: 'hoperisesfrom@gmail.com',
+    from_name: 'Liz Luxe POS',
+    subject: 'Liz Luxe Backup — ' + today,
+    date: today,
+    sales_count: salesCount,
+    inventory_count: invCount,
+    backup_file: 'LizLuxe-Backup-' + dateStr + '.json',
+    message: 'Your daily backup is ready. The file has been saved to your device\'s Downloads folder.'
+  }).then(function() {
+    toast('Backup email sent ✓', 'ok');
+    document.getElementById('backup-modal').remove();
+  }).catch(function(err) {
+    console.error('EmailJS error:', err);
+    toast('Email failed — check console', 'err');
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  });
+}
+
+// Manual backup trigger
+function manualBackup() {
+  performBackup();
+}
+
+// Check backup every 10 minutes
+setInterval(checkAutoBackup, 600000);
+// Also check on app unlock
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) checkAutoBackup();
+});
+
+
+
+// ══ RESTORE BACKUP SYSTEM ══
+var _restoreData = null;
+
+function showRestoreModal() {
+  document.getElementById('restore-modal').classList.add('on');
+  document.getElementById('restore-preview').style.display = 'none';
+  document.getElementById('restore-btn').style.display = 'none';
+  document.getElementById('restore-progress').style.display = 'none';
+  document.getElementById('restore-log').innerHTML = '';
+  document.getElementById('restore-file').value = '';
+  _restoreData = null;
+}
+
+function handleRestoreFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+      _restoreData = data;
+
+      // Validate backup structure
+      if (!data.version || !data.sales || !data.inventory) {
+        toast('Invalid backup file', 'err');
+        return;
+      }
+
+      // Show preview
+      var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+      html += '<div class="sc"><div class="sl">Backup Date</div><div class="sv" style="font-size:14px;">' + (data.date || 'Unknown') + '</div></div>';
+      html += '<div class="sc"><div class="sl">Version</div><div class="sv" style="font-size:14px;">' + data.version + '</div></div>';
+      html += '<div class="sc"><div class="sl">Sales</div><div class="sv" style="color:var(--ok);">' + data.sales.length + '</div></div>';
+      html += '<div class="sc"><div class="sl">Inventory</div><div class="sv" style="color:var(--gold);">' + data.inventory.length + '</div></div>';
+      html += '<div class="sc"><div class="sl">Expenses</div><div class="sv" style="color:var(--err);">' + data.deductions.length + '</div></div>';
+      html += '<div class="sc"><div class="sl">Transfers</div><div class="sv" style="color:var(--info);">' + data.transfers.length + '</div></div>';
+      html += '</div>';
+
+      document.getElementById('restore-preview-body').innerHTML = html;
+      document.getElementById('restore-preview').style.display = 'block';
+      document.getElementById('restore-btn').style.display = 'block';
+      toast('Backup file loaded — review and confirm', 'ok');
+    } catch(err) {
+      toast('Error reading backup: ' + err.message, 'err');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function executeRestore() {
+  if (!_restoreData) { toast('No backup loaded', 'err'); return; }
+  if (!confirm('THIS WILL OVERWRITE ALL CURRENT DATA.\n\nAre you absolutely sure?')) return;
+
+  var btn = document.getElementById('restore-btn');
+  btn.disabled = true;
+  btn.textContent = 'Restoring...';
+
+  var progress = document.getElementById('restore-progress');
+  var bar = document.getElementById('restore-bar');
+  var status = document.getElementById('restore-status');
+  var log = document.getElementById('restore-log');
+  progress.style.display = 'block';
+
+  function logMsg(msg) {
+    log.innerHTML += '<div style="padding:2px 0;">' + msg + '</div>';
+    log.scrollTop = log.scrollHeight;
+  }
+
+  var data = _restoreData;
+  var totalSteps = 5;
+  var currentStep = 0;
+
+  function updateProgress(step, pct) {
+    currentStep = step;
+    var overall = Math.round((step / totalSteps) * 100);
+    bar.style.width = pct + '%';
+    status.textContent = overall + '%';
+  }
+
+  // Step 1: Clear existing data (optional - we skip this to be safe, just insert new)
+  logMsg('📦 Step 1/5: Preparing inventory...');
+  updateProgress(1, 20);
+
+  // Step 2: Restore inventory
+  var invPs = data.inventory.map(function(item) {
+    var clean = {name: item.name, category: item.category, buying_price: item.buying_price, selling_price: item.selling_price, qty: item.qty, remaining: item.remaining};
+    return dbPost('inventory', clean).catch(function(e) { return {error: e.message, item: item.name}; });
+  });
+
+  Promise.all(invPs).then(function(results) {
+    var errors = results.filter(function(r) { return r && r.error; });
+    logMsg('✓ Inventory: ' + (results.length - errors.length) + '/' + results.length + ' restored' + (errors.length ? ' (' + errors.length + ' errors)' : ''));
+    updateProgress(2, 40);
+
+    // Step 3: Restore sales
+    logMsg('💰 Step 2/5: Restoring sales...');
+    var salePs = data.sales.map(function(s) {
+      var clean = {customer_name: s.customer_name, items: s.items, total: s.total, paid: s.paid, balance: s.balance, method: s.method, date: s.date, receipt_ref: s.receipt_ref || genRef(), discount_amount: s.discount_amount || 0, customer_phone: s.customer_phone || null, due_date: s.due_date || null, payment_log: s.payment_log || [], split_details: s.split_details || null};
+      return dbPost('sales', clean).catch(function(e) { return {error: e.message, ref: s.receipt_ref}; });
+    });
+    return Promise.all(salePs);
+  }).then(function(results) {
+    var errors = results.filter(function(r) { return r && r.error; });
+    logMsg('✓ Sales: ' + (results.length - errors.length) + '/' + results.length + ' restored' + (errors.length ? ' (' + errors.length + ' errors)' : ''));
+    updateProgress(3, 60);
+
+    // Step 4: Restore deductions/expenses
+    logMsg('💸 Step 3/5: Restoring expenses & capital...');
+    var dedPs = data.deductions.map(function(d) {
+      var clean = {amount: d.amount, reason: d.reason, category: d.category, type: d.type, wallet: d.wallet || null, date: d.date};
+      return dbPost('deductions', clean).catch(function(e) { return {error: e.message}; });
+    });
+    return Promise.all(dedPs);
+  }).then(function(results) {
+    var errors = results.filter(function(r) { return r && r.error; });
+    logMsg('✓ Expenses: ' + (results.length - errors.length) + '/' + results.length + ' restored');
+    updateProgress(4, 80);
+
+    // Step 5: Restore transfers
+    logMsg('🔄 Step 4/5: Restoring transfers...');
+    var transPs = data.transfers.map(function(t) {
+      var clean = {from_wallet: t.from_wallet, to_wallet: t.to_wallet, amount: t.amount, note: t.note || '', date: t.date};
+      return dbPost('transfers', clean).catch(function(e) { return {error: e.message}; });
+    });
+    return Promise.all(transPs);
+  }).then(function(results) {
+    var errors = results.filter(function(r) { return r && r.error; });
+    logMsg('✓ Transfers: ' + (results.length - errors.length) + '/' + results.length + ' restored');
+    updateProgress(5, 100);
+
+    logMsg('🎉 RESTORE COMPLETE!');
+    toast('Backup restored successfully!', 'ok');
+
+    // Refresh app data
+    setTimeout(function() {
+      inv = []; allSales = []; allCustomerSales = [];
+      loadInv(); loadCustomers(); loadTransfers(); renderFin();
+      document.getElementById('restore-modal').classList.remove('on');
+      btn.disabled = false;
+      btn.textContent = '⚠️ CONFIRM RESTORE';
+    }, 2000);
+  }).catch(function(e) {
+    logMsg('❌ Error: ' + e.message);
+    toast('Restore failed: ' + e.message, 'err');
+    btn.disabled = false;
+    btn.textContent = '⚠️ CONFIRM RESTORE';
+  });
+}
+
 </script>
+
+<!-- ══ RESTORE BACKUP MODAL ══ -->
+<div class="edit-items-modal" id="restore-modal">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+    <button onclick="document.getElementById('restore-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+    <div style="font-weight:700;font-size:16px;">Restore from Backup</div>
+  </div>
+  <div class="edit-items-body" style="padding:20px;">
+    <div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--rs);padding:12px;margin-bottom:16px;font-size:13px;color:var(--err);">
+      <strong>⚠️ Warning:</strong> Restoring will overwrite all current data. Make sure you have a fresh backup first.
+    </div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:12px;">
+      Upload a <strong>LizLuxe-Backup-YYYY-MM-DD.json</strong> file to restore all data.
+    </div>
+    <input type="file" id="restore-file" accept=".json" onchange="handleRestoreFile(this)" style="display:none;">
+    <button class="btn bp" onclick="document.getElementById('restore-file').click()" style="margin-bottom:12px;">📁 Select Backup File</button>
+    <div id="restore-preview" style="display:none;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:14px;margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:8px;">Backup Preview</div>
+      <div id="restore-preview-body" style="font-size:13px;"></div>
+    </div>
+    <button class="btn bp" id="restore-btn" onclick="executeRestore()" style="display:none;margin-bottom:10px;background:var(--err-bg);color:var(--err);border-color:rgba(224,96,96,.3);">⚠️ CONFIRM RESTORE</button>
+    <div id="restore-progress" style="display:none;margin-top:12px;">
+      <div style="font-size:12px;color:var(--t2);margin-bottom:6px;">Restoring... <span id="restore-status">0%</span></div>
+      <div style="background:var(--s3);border-radius:var(--rs);height:8px;overflow:hidden;">
+        <div id="restore-bar" style="background:var(--gold);height:100%;width:0%;transition:width .3s;"></div>
+      </div>
+    </div>
+    <div id="restore-log" style="margin-top:10px;font-size:12px;color:var(--t2);max-height:200px;overflow-y:auto;"></div>
+  </div>
+</div>
+
 </body>
 </html>
