@@ -1230,7 +1230,9 @@ function checkLow() {
 function updateOverdueBadge() {
   var today = new Date().toISOString().slice(0, 10);
   var overdueCount = allCustomerSales.filter(function(s) {
-    return (s.balance || 0) > 0 && s.due_date && s.due_date < today;
+    if ((s.balance || 0) <= 0) return false;
+    var d = new Date(s.date); d.setDate(d.getDate() + 14);
+    return d.toISOString().slice(0, 10) < today;
   }).length;
   var dot = document.getElementById('overdue-dot');
   if (dot) dot.style.display = overdueCount > 0 ? 'block' : 'none';
@@ -2917,13 +2919,7 @@ function completeSale() {
   var items = cart.map(function(c) { return {id: c.id, name: c.name, qty: c.qty, selling_price: c.sp, buying_price: c.bp}; });
   lastReceiptRef = genRef();
   var phone = document.getElementById('sale-phone').value.trim();
-var dueDate = null;
-  if (method === 'Credit') {
-    var d = new Date(date);
-    d.setDate(d.getDate() + 14); // 14-day credit terms
-    dueDate = d.toISOString().slice(0, 10);
-  }
-  var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0, customer_phone: phone || null, due_date: dueDate};
+var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0, customer_phone: phone || null};
   if (splitDetails) saleData.split_details = splitDetails;
 
   dbPost('sales', saleData)
@@ -3101,13 +3097,8 @@ function filterCustomers() {
     else if (custFilterMode === 'overdue') {
       matchF = map[n].sales.some(function(s) {
         if ((s.balance || 0) <= 0) return false;
-        var dueDate = s.due_date;
-        if (!dueDate) {
-          var d = new Date(s.date);
-          d.setDate(d.getDate() + 14);
-          dueDate = d.toISOString().slice(0, 10);
-        }
-        return dueDate < today;
+        var d = new Date(s.date); d.setDate(d.getDate() + 14);
+        return d.toISOString().slice(0, 10) < today;
       });
     }
     return matchQ && matchF;
@@ -3117,20 +3108,15 @@ function filterCustomers() {
       var getOldestDue = function(name) {
         var sales = map[name].sales.filter(function(s) {
           if ((s.balance || 0) <= 0) return false;
-          var dueDate = s.due_date;
-          if (!dueDate) {
-            var d = new Date(s.date);
-            d.setDate(d.getDate() + 14);
-            dueDate = d.toISOString().slice(0, 10);
-          }
-          return dueDate < today;
+          var d = new Date(s.date); d.setDate(d.getDate() + 14);
+          return d.toISOString().slice(0, 10) < today;
         });
         if (!sales.length) return '9999-99-99';
         return sales.sort(function(x, y) {
-          var dx = x.due_date || new Date(new Date(x.date).getTime() + 14*86400000).toISOString().slice(0,10);
-          var dy = y.due_date || new Date(new Date(y.date).getTime() + 14*86400000).toISOString().slice(0,10);
+          var dx = new Date(new Date(x.date).getTime() + 14*86400000).toISOString().slice(0,10);
+          var dy = new Date(new Date(y.date).getTime() + 14*86400000).toISOString().slice(0,10);
           return dx.localeCompare(dy);
-        })[0].due_date || sales[0].date;
+        })[0].date;
       };
       return getOldestDue(a).localeCompare(getOldestDue(b));
     }
@@ -3156,22 +3142,17 @@ function filterCustomers() {
     var today2 = new Date().toISOString().slice(0, 10);
     var overdueSales = c.sales.filter(function(s) {
       if ((s.balance || 0) <= 0) return false;
-      var dueDate = s.due_date;
-      if (!dueDate) {
-        var d = new Date(s.date);
-        d.setDate(d.getDate() + 14);
-        dueDate = d.toISOString().slice(0, 10);
-      }
-      return dueDate < today2;
+      var d = new Date(s.date); d.setDate(d.getDate() + 14);
+      return d.toISOString().slice(0, 10) < today2;
     });
     var overdueLabel = '';
     if (overdueSales.length > 0) {
       var oldestDue = overdueSales.sort(function(x, y) {
-        var dx = x.due_date || new Date(new Date(x.date).getTime() + 14*86400000).toISOString().slice(0,10);
-        var dy = y.due_date || new Date(new Date(y.date).getTime() + 14*86400000).toISOString().slice(0,10);
+        var dx = new Date(new Date(x.date).getTime() + 14*86400000).toISOString().slice(0,10);
+        var dy = new Date(new Date(y.date).getTime() + 14*86400000).toISOString().slice(0,10);
         return dx.localeCompare(dy);
       })[0];
-      var oldestDueDate = oldestDue.due_date || new Date(new Date(oldestDue.date).getTime() + 14*86400000).toISOString().slice(0,10);
+      var oldestDueDate = new Date(new Date(oldestDue.date).getTime() + 14*86400000).toISOString().slice(0,10);
       var daysOverdue = Math.floor((new Date(today2) - new Date(oldestDueDate)) / (1000 * 60 * 60 * 24));
       overdueLabel = ' &middot; <span style="color:var(--err);font-weight:700;">' + daysOverdue + 'd overdue</span>';
     }
@@ -3441,11 +3422,20 @@ function sendCustReminder() {
   if (items.length > 5) itemList += '\n... and ' + (items.length - 5) + ' more';
 
   var today = new Date().toISOString().slice(0, 10);
-  var overdueSales = _cdSales.filter(function(s) { return (s.balance || 0) > 0 && s.due_date && s.due_date < today; });
+  var overdueSales = _cdSales.filter(function(s) {
+    if ((s.balance || 0) <= 0) return false;
+    var d = new Date(s.date); d.setDate(d.getDate() + 14);
+    return d.toISOString().slice(0, 10) < today;
+  });
   var daysOverdue = 0;
   if (overdueSales.length > 0) {
-    var oldestDue = overdueSales.sort(function(x, y) { return x.due_date.localeCompare(y.due_date); })[0].due_date;
-    daysOverdue = Math.floor((new Date(today) - new Date(oldestDue)) / (1000 * 60 * 60 * 24));
+    var oldestDue = overdueSales.sort(function(x, y) {
+      var dx = new Date(new Date(x.date).getTime() + 14*86400000).toISOString().slice(0,10);
+      var dy = new Date(new Date(y.date).getTime() + 14*86400000).toISOString().slice(0,10);
+      return dx.localeCompare(dy);
+    })[0];
+    var oldestDueDate = new Date(new Date(oldestDue.date).getTime() + 14*86400000).toISOString().slice(0,10);
+    daysOverdue = Math.floor((new Date(today) - new Date(oldestDueDate)) / (1000 * 60 * 60 * 24));
   }
   var msg;
   if (daysOverdue > 0) {
@@ -3584,7 +3574,9 @@ function renderFin() {
 
       // Overdue summary
       var overdueSales = allSalesData.filter(function(s) {
-        return (s.balance || 0) > 0 && s.due_date && s.due_date < today;
+        if ((s.balance || 0) <= 0) return false;
+        var d = new Date(s.date); d.setDate(d.getDate() + 14);
+        return d.toISOString().slice(0, 10) < today;
       });
       var overdueCard = document.getElementById('fin-overdue');
       if (overdueSales.length > 0) {
@@ -3594,7 +3586,8 @@ function renderFin() {
         var totalDays = 0;
         overdueSales.forEach(function(s) {
           overdueCustomers[s.customer_name] = 1;
-          totalDays += Math.floor((new Date(today) - new Date(s.due_date)) / (1000 * 60 * 60 * 24));
+          var dd = new Date(s.date); dd.setDate(dd.getDate() + 14);
+          totalDays += Math.floor((new Date(today) - dd) / (1000 * 60 * 60 * 24));
         });
         document.getElementById('fo-amt').textContent = fmt(overdueTotal);
         document.getElementById('fo-cnt').textContent = Object.keys(overdueCustomers).length;
@@ -4874,7 +4867,7 @@ function executeRestore() {
     // Step 3: Restore sales
     logMsg('💰 Step 2/5: Restoring sales...');
     var salePs = data.sales.map(function(s) {
-      var clean = {customer_name: s.customer_name, items: s.items, total: s.total, paid: s.paid, balance: s.balance, method: s.method, date: s.date, receipt_ref: s.receipt_ref || genRef(), discount_amount: s.discount_amount || 0, customer_phone: s.customer_phone || null, due_date: s.due_date || null, payment_log: s.payment_log || [], split_details: s.split_details || null};
+      var clean = {customer_name: s.customer_name, items: s.items, total: s.total, paid: s.paid, balance: s.balance, method: s.method, date: s.date, receipt_ref: s.receipt_ref || genRef(), discount_amount: s.discount_amount || 0, customer_phone: s.customer_phone || null, payment_log: s.payment_log || [], split_details: s.split_details || null};
       return dbPost('sales', clean).catch(function(e) { return {error: e.message, ref: s.receipt_ref}; });
     });
     return Promise.all(salePs);
