@@ -1878,6 +1878,14 @@ function renderHistList(reset) {
     html += '<div class="edit-sale-panel" id="esp-' + s.id + '">';
     html += '<div class="g12"><label>Customer Name</label><input id="esn-' + s.id + '" value="' + s.customer_name + '"></div>';
     html += '<div class="g12"><label>Date</label><input type="date" id="esd-' + s.id + '" value="' + s.date + '"></div>';
+    html += '<div class="g12"><label>Payment Method</label><select id="esm-' + s.id + '">';
+    html += '<option value="Cash"' + (s.method === 'Cash' ? ' selected' : '') + '>Cash</option>';
+    html += '<option value="M-Pesa"' + (s.method === 'M-Pesa' ? ' selected' : '') + '>M-Pesa</option>';
+    html += '<option value="Card"' + (s.method === 'Card' ? ' selected' : '') + '>Card</option>';
+    html += '<option value="Credit"' + (s.method === 'Credit' ? ' selected' : '') + '>Credit (Debt)</option>';
+    html += '<option value="Split"' + (s.method === 'Split' ? ' selected' : '') + '>Split</option>';
+    html += '<option value="Bank"' + (s.method === 'Bank' ? ' selected' : '') + '>Bank</option>';
+    html += '</select></div>';
     html += '<button class="btn bp bsm" onclick="saveEditSale(' + s.id + ')">Save Changes</button></div>';
     html += '</div>';
   });
@@ -3164,6 +3172,14 @@ function filterHist() {
     html += '<div class="edit-sale-panel" id="esp-' + s.id + '">';
     html += '<div class="g12"><label>Customer Name</label><input id="esn-' + s.id + '" value="' + s.customer_name + '"></div>';
     html += '<div class="g12"><label>Date</label><input type="date" id="esd-' + s.id + '" value="' + s.date + '"></div>';
+    html += '<div class="g12"><label>Payment Method</label><select id="esm-' + s.id + '">';
+    html += '<option value="Cash"' + (s.method === 'Cash' ? ' selected' : '') + '>Cash</option>';
+    html += '<option value="M-Pesa"' + (s.method === 'M-Pesa' ? ' selected' : '') + '>M-Pesa</option>';
+    html += '<option value="Card"' + (s.method === 'Card' ? ' selected' : '') + '>Card</option>';
+    html += '<option value="Credit"' + (s.method === 'Credit' ? ' selected' : '') + '>Credit (Debt)</option>';
+    html += '<option value="Split"' + (s.method === 'Split' ? ' selected' : '') + '>Split</option>';
+    html += '<option value="Bank"' + (s.method === 'Bank' ? ' selected' : '') + '>Bank</option>';
+    html += '</select></div>';
     html += '<button class="btn bp bsm" onclick="saveEditSale(' + s.id + ')">Save Changes</button></div>';
     html += '</div>';
   });
@@ -3178,10 +3194,23 @@ function toggleEditSale(id) {
 function saveEditSale(id) {
   var name = document.getElementById('esn-' + id).value.trim();
   var date = document.getElementById('esd-' + id).value;
+  var method = document.getElementById('esm-' + id).value;
   if (!name || !date) { toast('Fill in name and date', 'err'); return; }
-  dbPatch('sales', {customer_name: name, date: date}, '?id=eq.' + id)
+
+  // Get the sale to check if method changed
+  var sale = allSales.find(function(s) { return s.id === id; });
+  var oldMethod = sale ? sale.method : '';
+
+  dbPatch('sales', {customer_name: name, date: date, method: method}, '?id=eq.' + id)
     .then(function() {
-      toast('Sale updated', 'ok');
+      // If payment method changed, refresh finance data
+      if (oldMethod !== method) {
+        toast('Sale updated — payment method changed to ' + method, 'ok');
+        // Refresh finance tab data if it's been loaded
+        if (finOpen) renderFin();
+      } else {
+        toast('Sale updated', 'ok');
+      }
       allSales = []; loadHist();
     }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }

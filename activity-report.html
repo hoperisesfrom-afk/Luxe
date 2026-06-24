@@ -262,19 +262,9 @@ function loadData() {
     var allSales = r[0], allDeds = r[1], allTransfers = r[2], allReturns = r[3];
 
     var events = [];
-    var openingBalance = 0;
-    var openingCredit = 0;
 
-    // --- Build a map of all payments by sale_id for efficient lookup ---
-    var salePaymentsMap = {};
+    // --- Process ALL sales (from beginning of time) ---
     allSales.forEach(function(s) {
-      var pl = s.payment_log || [];
-      salePaymentsMap[s.id] = pl;
-    });
-
-    // --- Process sales ---
-    allSales.forEach(function(s) {
-      var paymentLog = s.payment_log || [];
       var total = s.total || 0;
       var paid = s.paid || 0;
       var balance = s.balance || 0;
@@ -282,193 +272,76 @@ function loadData() {
       var receipt = s.receipt_ref || '';
       var isReturned = (s.method || '').indexOf('Returned') >= 0;
 
-      // Calculate payments made BEFORE the period (for opening balance)
-      var prePeriodPayments = paymentLog.filter(function(p) {
-        return (p.date || s.date) < from;
-      }).reduce(function(sum, p) { return sum + (p.amount || 0); }, 0);
-
-      // Calculate payments made DURING the period
-      var periodPayments = paymentLog.filter(function(p) {
-        return (p.date || s.date) >= from && (p.date || s.date) <= to;
-      });
-
-      // Calculate payments made AFTER the period (still in current paid/balance)
-      var postPeriodPayments = paymentLog.filter(function(p) {
-        return (p.date || s.date) > to;
-      }).reduce(function(sum, p) { return sum + (p.amount || 0); }, 0);
-
-      // State as of the start of the period (just before 'from' date)
-      // = current state - period payments - post-period payments
-      var stateAtPeriodStart = {
-        paid: paid - periodPayments.reduce(function(s, p) { return s + (p.amount || 0); }, 0) - postPeriodPayments,
-        balance: balance + periodPayments.reduce(function(s, p) { return s + (p.amount || 0); }, 0) + postPeriodPayments
-      };
-
-      if (s.date < from) {
-        // Sale happened before period — use state at period start for opening balance
-        openingBalance += stateAtPeriodStart.paid;
-        openingCredit += stateAtPeriodStart.balance;
-      } else if (s.date >= from && s.date <= to) {
-        if (isReturned) {
-          // Returned sale — reconstruct original transaction, then reverse it
-          // Original state: what was paid and owed at time of sale
-          var futurePayments = paymentLog.filter(function(p) { return (p.date || s.date) > s.date; });
-          var totalFuturePayments = futurePayments.reduce(function(sum, p){return sum + (p.amount||0);}, 0);
-          var originalPaid = paid - totalFuturePayments;
-          var originalBalance = balance + totalFuturePayments;
-
-          // For a returned sale, we need to reverse the ORIGINAL transaction
-          // If original was cash: we gave back cash (cashOut = originalPaid)
-          // If original was credit: we reduce credit (creditChange = -originalBalance)
-          // If partially paid: both apply
-          events.push({
-            date: s.date,
-            type: 'returned',
-            title: 'Return: ' + s.customer_name,
-            detail: items + (receipt && receipt !== 'null' && receipt !== 'undefined' ? ' | ' + receipt : ''),
-            wallet: s.method || 'Cash',
-            cashIn: 0,
-            cashOut: originalPaid,  // Refund whatever was originally paid
-            creditChange: -originalBalance  // Reduce credit by whatever was originally owed
-          });
-        } else {
-          // Regular sale — show original state at sale time
-          var futurePayments = paymentLog.filter(function(p) { return (p.date || s.date) > s.date; });
-          var totalFuturePayments = futurePayments.reduce(function(sum, p){return sum + (p.amount||0);}, 0);
-          var originalPaid = paid - totalFuturePayments;
-          var originalBalance = balance + totalFuturePayments;
-
-          events.push({
-            date: s.date,
-            type: 'sale',
-            title: 'Sale: ' + s.customer_name,
-            detail: items + (receipt && receipt !== 'null' && receipt !== 'undefined' ? ' | ' + receipt : ''),
-            wallet: s.method || 'Cash',
-            cashIn: originalPaid,
-            cashOut: 0,
-            creditChange: originalBalance
-          });
-
-          // Period payments as separate rows
-          periodPayments.forEach(function(p) {
-            var payAmount = p.amount || 0;
-            var payMethod = p.method || 'Cash';
-            var payDate = p.date || s.date;
-            var firstItem = items ? items.split(',')[0] : '';
-
-            events.push({
-              date: payDate,
-              type: 'payment',
-              title: 'Payment: ' + s.customer_name,
-              detail: 'Repayment' + (receipt && receipt !== 'null' && receipt !== 'undefined' ? ' for ' + receipt : '') + (firstItem ? ' | ' + firstItem + '...' : ''),
-              wallet: payMethod,
-              cashIn: payAmount,
-              cashOut: 0,
-              creditChange: -payAmount
-            });
-          });
-        }
-      }
-    });
-
-    // --- Process deductions ---
-    allDeds.forEach(function(d) {
-      if (d.date < from) {
-        if (d.type === 'injection') openingBalance += (d.amount || 0);
-        else openingBalance -= (d.amount || 0);
-      } else if (d.date >= from && d.date <= to) {
-        var isInj = d.type === 'injection';
+      if (isReturned) {
+        // Returned sale — show as negative sale
         events.push({
-          date: d.date,
-          type: isInj ? 'capital' : 'expense',
-          title: (isInj ? '+ Capital: ' : '- Expense: ') + (d.reason || ''),
-          detail: (d.category || '') + (d.wallet ? ' | ' + d.wallet : ''),
-          wallet: d.wallet || 'Cash',
-          cashIn: isInj ? (d.amount || 0) : 0,
-          cashOut: isInj ? 0 : (d.amount || 0),
-          creditChange: 0
+          date: s.date,
+          type: 'returned',
+          title: 'Return: ' + s.customer_name,
+          detail: items + (receipt ? ' | ' + receipt : ''),
+          wallet: s.method || 'Cash',
+          cashIn: 0,
+          cashOut: paid,  // Refund = cash out
+          creditChange: -balance  // Credit reduction
+        });
+      } else {
+        // Regular sale — use current DB values directly (source of truth)
+        events.push({
+          date: s.date,
+          type: 'sale',
+          title: 'Sale: ' + s.customer_name,
+          detail: items + (receipt ? ' | ' + receipt : ''),
+          wallet: s.method || 'Cash',
+          cashIn: paid,     // Already includes all payments
+          cashOut: 0,
+          creditChange: balance  // Current balance as stored in DB
         });
       }
     });
 
-    // --- Process returns (standalone) ---
-    // NOTE: Pre-period returns are NOT processed separately here because
-    // the original sale's current paid/balance already reflects all returns.
-    // Processing them again would double-adjust the opening balance.
-    allReturns.forEach(function(ret) {
-      var retTotal = ret.total || 0;
-
-      if (ret.date >= from && ret.date <= to) {
-        // Determine if this was from a credit sale
-        var origSale = null;
-        if (ret.original_sale_id) {
-          origSale = allSales.find(function(s) { return s.id === ret.original_sale_id; });
-        }
-        if (!origSale) {
-          origSale = allSales.find(function(s) {
-            return s.customer_name === ret.customer_name &&
-                   s.date === ret.date &&
-                   (s.balance || 0) > 0;
-          });
-        }
-
-        var wasCredit = origSale && ((origSale.balance || 0) > 0 || (origSale.paid || 0) < (origSale.total || 0));
-        var items = (ret.items || []).map(function(i){return i.qty+'x '+i.name;}).join(', ');
-
-        if (wasCredit && origSale) {
-          // For credit returns, we need to know how much was paid vs owed on the original sale
-          // Reconstruct original state
-          var origPaymentLog = origSale.payment_log || [];
-          var origFuturePayments = origPaymentLog.filter(function(p) { return (p.date || origSale.date) > origSale.date; });
-          var origTotalFuture = origFuturePayments.reduce(function(s, p) { return s + (p.amount || 0); }, 0);
-          var origOriginalPaid = (origSale.paid || 0) - origTotalFuture;
-          var origOriginalBalance = (origSale.balance || 0) + origTotalFuture;
-
-          // The return amount might be less than the original sale
-          // We refund proportional cash and reduce proportional credit
-          var refundRatio = retTotal / (origSale.total || 1);
-          var cashRefund = origOriginalPaid * refundRatio;
-          var creditReduction = origOriginalBalance * refundRatio;
-
-          events.push({
-            date: ret.date,
-            type: 'returned',
-            title: 'Return: ' + (ret.customer_name || ''),
-            detail: items + (ret.reason ? ' | ' + ret.reason : ''),
-            wallet: 'Refund',
-            cashIn: 0,
-            cashOut: cashRefund,
-            creditChange: -creditReduction
-          });
-        } else {
-          events.push({
-            date: ret.date,
-            type: 'returned',
-            title: 'Return: ' + (ret.customer_name || ''),
-            detail: items + (ret.reason ? ' | ' + ret.reason : ''),
-            wallet: 'Refund',
-            cashIn: 0,
-            cashOut: retTotal,
-            creditChange: 0
-          });
-        }
-      }
+    // --- Process ALL deductions (from beginning of time) ---
+    allDeds.forEach(function(d) {
+      var isInj = d.type === 'injection';
+      events.push({
+        date: d.date,
+        type: isInj ? 'capital' : 'expense',
+        title: (isInj ? '+ Capital: ' : '- Expense: ') + (d.reason || ''),
+        detail: (d.category || '') + (d.wallet ? ' | ' + d.wallet : ''),
+        wallet: d.wallet || 'Cash',
+        cashIn: isInj ? (d.amount || 0) : 0,
+        cashOut: isInj ? 0 : (d.amount || 0),
+        creditChange: 0
+      });
     });
 
-    // Transfers: skip them entirely — they don't affect total cash position
-    // (They are internal wallet movements, cashIn=cashOut=0, just noise in the report)
+    // --- Process ALL returns (from beginning of time) ---
+    allReturns.forEach(function(ret) {
+      var items = (ret.items || []).map(function(i){return i.qty+'x '+i.name;}).join(', ');
+      events.push({
+        date: ret.date,
+        type: 'returned',
+        title: 'Return: ' + (ret.customer_name || ''),
+        detail: items + (ret.reason ? ' | ' + ret.reason : ''),
+        wallet: 'Refund',
+        cashIn: 0,
+        cashOut: ret.total || 0,
+        creditChange: 0
+      });
+    });
 
+    // Sort all events by date
     events.sort(function(a,b){ return a.date.localeCompare(b.date); });
 
-    var runningBalance = openingBalance;
-    var runningCredit = openingCredit;
+    // Calculate running totals from ZERO (matching index.html)
+    var runningBalance = 0;
+    var runningCredit = 0;
     var customerBalances = {};
     var totalCashIn = 0, totalCashOut = 0;
 
     events.forEach(function(e) {
       runningBalance += e.cashIn - e.cashOut;
 
-      // Track per-customer balance (before global clamping)
+      // Track per-customer balance
       var cust = getCustName(e.title);
       if (cust) {
         if (!customerBalances[cust]) customerBalances[cust] = 0;
@@ -477,16 +350,12 @@ function loadData() {
       }
       e.custBalance = cust ? customerBalances[cust] : 0;
 
-      // Apply credit change, but clamp global credit to 0
-      // Overpayments (excess credit reduction) are treated as additional cash
-      var newCredit = runningCredit + e.creditChange;
-      if (newCredit < 0) {
-        // Overpayment: credit goes to 0, excess is extra cash
-        var overpayment = -newCredit;
-        runningBalance += overpayment;  // Overpayment is cash in hand
+      // Apply credit change
+      runningCredit += e.creditChange;
+      if (runningCredit < 0) {
+        // Overpayment: credit goes to 0, excess becomes cash
+        runningBalance += Math.abs(runningCredit);
         runningCredit = 0;
-      } else {
-        runningCredit = newCredit;
       }
 
       e.balanceAfter = runningBalance;
@@ -496,62 +365,56 @@ function loadData() {
       totalCashOut += e.cashOut;
     });
 
-    // Calculate "true" current credit from database (source of truth)
-    // This handles cases where returns, direct updates, or data inconsistencies
-    // cause the event-based reconstruction to drift from reality
+    // Final credit = sum of all current sale balances (DB source of truth)
     var dbTotalCredit = allSales.reduce(function(s, x) { return s + Math.max(0, x.balance || 0); }, 0);
     var dbTotalPaid = allSales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
     var dbTotalSales = allSales.reduce(function(s, x) { return s + (x.total || 0); }, 0);
 
-    // The event-based runningCredit may differ from dbTotalCredit due to:
-    // 1. Returns that reduced credit but the original sale balance wasn't updated in DB
-    // 2. Direct payment updates not recorded in payment_log
-    // 3. Data inconsistencies from manual edits
-    // We use dbTotalCredit as the authoritative final credit value.
-    var creditDiff = dbTotalCredit - runningCredit;
+    // Use DB credit as final (matches index.html exactly)
+    var finalCredit = dbTotalCredit;
+    var finalBalance = runningBalance;
+    // Adjust for any credit drift
+    var creditDiff = finalCredit - runningCredit;
+    if (creditDiff !== 0) {
+      finalBalance += creditDiff; // Overpayments/underpayments affect cash
+    }
+    var finalNet = finalBalance + finalCredit;
 
     _data = {
       events: events,
-      openingBalance: openingBalance,
-      openingCredit: openingCredit,
+      openingBalance: 0,  // Always starts from zero
+      openingCredit: 0,
       totalCashIn: totalCashIn,
       totalCashOut: totalCashOut,
-      finalBalance: runningBalance,
-      finalCredit: dbTotalCredit,  // Use DB value as source of truth
-      finalNet: runningBalance + dbTotalCredit,  // Net uses DB credit
+      finalBalance: finalBalance,
+      finalCredit: finalCredit,
+      finalNet: finalNet,
       from: from,
       to: to,
       customerBalances: customerBalances,
       dbTotalCredit: dbTotalCredit,
       dbTotalPaid: dbTotalPaid,
       dbTotalSales: dbTotalSales,
-      eventCredit: runningCredit,  // For debugging
-      creditDiff: creditDiff       // For debugging
+      eventCredit: runningCredit,
+      creditDiff: creditDiff
     };
+
+    // Filter events for display (only show events within selected period)
+    var displayEvents = events.filter(function(e) {
+      return e.date >= from && e.date <= to;
+    });
 
     document.getElementById('stat-in').textContent = fmt(totalCashIn);
     document.getElementById('stat-out').textContent = fmt(totalCashOut);
-    document.getElementById('stat-net').textContent = fmt(runningBalance + dbTotalCredit);
+    document.getElementById('stat-net').textContent = fmt(finalNet);
 
     var html = '';
-    if (openingBalance !== 0 || openingCredit !== 0) {
-      html += '<div class="act-opening" style="display:grid;grid-template-columns:80px 1fr 70px 70px 90px 80px 80px 80px;gap:8px;align-items:center">';
-      html += '<div class="act-date">Opening</div>';
-      html += '<div class="act-event"><div class="act-event-title">Opening Balance</div></div>';
-      html += '<div class="act-in">' + (openingBalance > 0 ? '+' + fmt(openingBalance) : '') + '</div>';
-      html += '<div class="act-out">' + (openingBalance < 0 ? fmt(Math.abs(openingBalance)) : '') + '</div>';
-      html += '<div class="act-bal">' + fmt(openingBalance) + '</div>';
-      html += '<div class="act-cred">' + (openingCredit > 0 ? fmt(openingCredit) : '') + '</div>';
-      html += '<div style="text-align:right;color:var(--t3);font-size:11px;">—</div>';
-      html += '<div class="act-net">' + fmt(openingBalance + openingCredit) + '</div>';
-      html += '</div>';
-    }
 
-    if (!events.length) {
+    if (!displayEvents.length) {
       html += '<div class="empty" style="padding:40px">No transactions for this period</div>';
     } else {
       var lastDate = '';
-      events.forEach(function(e) {
+      displayEvents.forEach(function(e) {
         var dateStr = e.date;
         try { dateStr = new Date(e.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short'}); } catch(err) {}
         var showDate = e.date !== lastDate;
@@ -569,7 +432,6 @@ function loadData() {
         html += '<div class="act-in">' + (e.cashIn > 0 ? '+' + fmt(e.cashIn) : '') + '</div>';
         html += '<div class="act-out">' + (e.cashOut > 0 ? '-' + fmt(e.cashOut) : '') + '</div>';
         html += '<div class="act-bal">' + fmt(e.balanceAfter) + '</div>';
-        // Credit column: show the credit CHANGE for this event (not running total)
         html += '<div class="act-cred">' + (e.creditChange > 0 ? '+' + fmt(e.creditChange) : e.creditChange < 0 ? fmt(e.creditChange) : '') + '</div>';
         html += '<div style="text-align:right;color:var(--info);font-weight:700;font-size:13px;">' + (e.custBalance > 0 ? fmt(e.custBalance) : '') + '</div>';
         html += '<div class="act-net">' + fmt(e.netAfter) + '</div>';
@@ -577,37 +439,20 @@ function loadData() {
       });
 
       html += '<div class="act-total-row" style="display:grid;grid-template-columns:80px 1fr 70px 70px 90px 80px 80px 80px;gap:8px;align-items:center">';
-      html += '<div></div><div style="color:var(--t2)">Totals / Final</div>';
+      html += '<div></div><div style="color:var(--t2)">Final (All Time)</div>';
       html += '<div class="act-in">+' + fmt(totalCashIn) + '</div>';
       html += '<div class="act-out">-' + fmt(totalCashOut) + '</div>';
-      html += '<div class="act-bal">' + fmt(runningBalance) + '</div>';
-      html += '<div class="act-cred">' + (dbTotalCredit > 0 ? fmt(dbTotalCredit) : '') + '</div>';
+      html += '<div class="act-bal">' + fmt(finalBalance) + '</div>';
+      html += '<div class="act-cred">' + (finalCredit > 0 ? fmt(finalCredit) : '') + '</div>';
       html += '<div style="text-align:right;color:var(--t3);font-size:11px;">—</div>';
-      html += '<div class="act-net">' + fmt(runningBalance + dbTotalCredit) + '</div>';
+      html += '<div class="act-net">' + fmt(finalNet) + '</div>';
       html += '</div>';
-
-      // Show reconciliation note if event-based credit differs from DB credit
-      if (Math.abs(creditDiff) > 1) {
-        html += '<div style="background:var(--info-bg);border:1px solid rgba(106,171,240,.2);border-radius:var(--rs);padding:10px 14px;margin-top:8px;font-size:12px;color:var(--info)">';
-        html += '<div style="font-weight:700;margin-bottom:4px">&#9432; Credit Reconciliation</div>';
-        html += '<div>Event-based credit: ' + fmt(runningCredit) + ' · DB credit: ' + fmt(dbTotalCredit) + ' · Diff: ' + fmt(Math.abs(creditDiff)) + '</div>';
-        html += '<div style="font-size:11px;color:var(--t2);margin-top:4px">This difference may be from returns, direct payments, or manual edits not in payment_log.</div>';
-        html += '</div>';
-      }
     }
 
     el.innerHTML = html;
 
-    // Debug logging
-    console.log('Activity Report loaded. Events:', events.length);
-    console.log('Opening balance:', openingBalance, 'Opening credit:', openingCredit);
-    events.forEach(function(e, i) {
-      console.log(i, e.date, e.type, 'CashIn:', e.cashIn, 'CashOut:', e.cashOut, 'CreditChange:', e.creditChange, e.title);
-    });
-
   }).catch(function(e) {
-    var msg = e.message || String(e);
-    // Handle JWT expiry — force re-login
+    var msg = e && e.message ? e.message : String(e || 'Unknown error');
     if (msg.indexOf('JWT') >= 0 || msg.indexOf('expired') >= 0 || msg.indexOf('token') >= 0 || msg.indexOf('401') >= 0 || msg.indexOf('403') >= 0) {
       authToken = null;
       try { localStorage.removeItem(SESSION_KEY); } catch(err) {}
@@ -646,10 +491,6 @@ function exportCSV() {
 
   s1.push([]);
   s1.push(['','','','TOTALS', d.totalCashIn, d.totalCashOut, d.finalBalance, d.finalCredit, '', d.finalNet]);
-  if (d.creditDiff && Math.abs(d.creditDiff) > 1) {
-    s1.push(['','','','DB CORRECTED CREDIT','','','', d.dbTotalCredit, '', '']);
-    s1.push(['','','','EVENT CREDIT','','','', d.eventCredit, '', '']);
-  }
 
   // ═══════════════════════════════════════════════════════════════
   // SHEET 2: MONEY FLOW (actual cash in / cash out tracking)
@@ -842,8 +683,9 @@ function shareWhatsApp() {
 
   // ── CASH POSITION ──
   msg += '💵 *CASH POSITION*' + String.fromCharCode(10);
-  msg += '• Final Cash Balance: ' + fmt(d.finalBalance) + String.fromCharCode(10);
-  msg += '• Net Value (Cash + Credit): ' + fmt(d.finalNet) + String.fromCharCode(10);
+  msg += '• Cash in Hand (Net Balance): ' + fmt(d.finalBalance) + String.fromCharCode(10);
+  msg += '• Credit Outstanding: ' + fmt(d.finalCredit) + String.fromCharCode(10);
+  msg += '• Total Business Value: ' + fmt(d.finalNet) + String.fromCharCode(10);
   msg += String.fromCharCode(10);
 
   msg += '✨ _Liz Luxe POS_';
