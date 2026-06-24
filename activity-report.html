@@ -626,7 +626,10 @@ function exportCSV() {
   var d = _data;
   if (!d || !d.events.length) { toast('No data to export', 'err'); return; }
 
-  var rows = [
+  // ═══════════════════════════════════════════════════════════════
+  // SHEET 1: ACTIVITY REPORT (existing format)
+  // ═══════════════════════════════════════════════════════════════
+  var s1 = [
     ['LIZ LUXE - ACTIVITY REPORT'],
     ['Period: ' + d.from + ' to ' + d.to],
     [],
@@ -634,67 +637,218 @@ function exportCSV() {
   ];
 
   if (d.openingBalance !== 0 || d.openingCredit !== 0) {
-    rows.push(['Opening','Opening','Opening Balance','','', '', d.openingBalance, d.openingCredit, '', d.openingBalance + d.openingCredit]);
+    s1.push(['Opening','Opening','Opening Balance','','', '', d.openingBalance, d.openingCredit, '', d.openingBalance + d.openingCredit]);
   }
 
   d.events.forEach(function(e) {
-    rows.push([e.date, e.type, e.title, e.wallet + (e.detail ? ' | ' + e.detail : ''), e.cashIn || '', e.cashOut || '', e.balanceAfter, e.creditChange || '', e.custBalance || '', e.netAfter]);
+    s1.push([e.date, e.type, e.title, e.wallet + (e.detail ? ' | ' + e.detail : ''), e.cashIn || '', e.cashOut || '', e.balanceAfter, e.creditChange || '', e.custBalance || '', e.netAfter]);
   });
 
-  rows.push([]);
-  rows.push(['','','','TOTALS', d.totalCashIn, d.totalCashOut, d.finalBalance, d.finalCredit, '', d.finalNet]);
+  s1.push([]);
+  s1.push(['','','','TOTALS', d.totalCashIn, d.totalCashOut, d.finalBalance, d.finalCredit, '', d.finalNet]);
   if (d.creditDiff && Math.abs(d.creditDiff) > 1) {
-    rows.push(['','','','DB CORRECTED CREDIT','','','', d.dbTotalCredit, '', '']);
-    rows.push(['','','','EVENT CREDIT','','','', d.eventCredit, '', '']);
+    s1.push(['','','','DB CORRECTED CREDIT','','','', d.dbTotalCredit, '', '']);
+    s1.push(['','','','EVENT CREDIT','','','', d.eventCredit, '', '']);
   }
 
-  var csv = rows.map(function(r) {
-    return r.map(function(v) {
-      var val = String(v).replace(/"/g, '""');
-      return val.indexOf(',') >= 0 || val.indexOf('"') >= 0 ? '"' + val + '"' : val;
-    }).join(',');
-  }).join(String.fromCharCode(10));
+  // ═══════════════════════════════════════════════════════════════
+  // SHEET 2: MONEY FLOW (actual cash in / cash out tracking)
+  // Every coin that moved. No credit — just real money.
+  // ═══════════════════════════════════════════════════════════════
+  var s2 = [
+    ['LIZ LUXE - MONEY FLOW'],
+    ['Period: ' + d.from + ' to ' + d.to],
+    ['Every coin in and out. Credit sales show as $0 cash in — only actual collected money counts here.'],
+    [],
+    ['Date','Type','Description','Wallet','Cash In (KES)','Cash Out (KES)','Running Cash (KES)','Notes']
+  ];
 
-  var blob = new Blob(['\ufeff' + csv], {type: 'text/csv;charset=utf-8;'});
+  var cashRunning = 0;
+
+  // Opening balance as first row
+  if (d.openingBalance !== 0) {
+    cashRunning += d.openingBalance;
+    s2.push([
+      'Opening',
+      'Opening Balance',
+      'Balance carried forward from before ' + d.from,
+      '—',
+      d.openingBalance > 0 ? d.openingBalance : '',
+      d.openingBalance < 0 ? Math.abs(d.openingBalance) : '',
+      cashRunning,
+      'Opening cash position'
+    ]);
+  }
+
+  // Filter to only events with actual cash movement
+  d.events.forEach(function(e) {
+    var hasCash = e.cashIn > 0 || e.cashOut > 0;
+    if (!hasCash) return;
+
+    cashRunning += e.cashIn - e.cashOut;
+
+    var note = '';
+    if (e.type === 'sale' && e.creditChange > 0) {
+      note = 'Credit sale: ' + fmt(e.creditChange) + ' owed. Only ' + fmt(e.cashIn) + ' collected in cash.';
+    } else if (e.type === 'payment') {
+      note = 'Debt repayment. Reduces credit owed by ' + fmt(Math.abs(e.creditChange)) + '.';
+    } else if (e.type === 'returned') {
+      note = 'Return/refund. Cash refunded to customer.';
+    } else if (e.type === 'expense') {
+      note = 'Business expense. Deducted from cash.';
+    } else if (e.type === 'capital') {
+      note = 'Capital injection. Added to business cash.';
+    }
+
+    s2.push([
+      e.date,
+      e.type === 'sale' ? 'Sale (Cash Collected)' : e.type === 'payment' ? 'Debt Payment' : e.type === 'returned' ? 'Return/Refund' : e.type === 'expense' ? 'Expense' : e.type === 'capital' ? 'Capital In' : e.type,
+      e.title + (e.detail ? ' | ' + e.detail : ''),
+      e.wallet || '—',
+      e.cashIn > 0 ? e.cashIn : '',
+      e.cashOut > 0 ? e.cashOut : '',
+      cashRunning,
+      note
+    ]);
+  });
+
+  // Total row
+  s2.push([]);
+  s2.push(['','','','TOTALS', d.totalCashIn, d.totalCashOut, cashRunning, 'Final cash position']);
+
+  // ═══════════════════════════════════════════════════════════════
+  // BUILD MULTI-SHEET XML (Excel-compatible)
+  // ═══════════════════════════════════════════════════════════════
+  function escXml(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function buildSheet(rows, name) {
+    var xml = '<Worksheet ss:Name="' + escXml(name) + '"><Table>';
+    rows.forEach(function(row, ri) {
+      if (!row || !row.length) { xml += '<Row></Row>'; return; }
+      xml += '<Row>';
+      row.forEach(function(cell) {
+        var styleId = '';
+        if (ri === 0) styleId = ' ss:StyleID="H"';
+        else if (ri === 2 && name === 'Money Flow') styleId = ' ss:StyleID="I"';
+        else if (ri === 4) styleId = ' ss:StyleID="B"';
+        else if (String(cell).toUpperCase() === 'TOTALS') styleId = ' ss:StyleID="T"';
+        else if (String(cell) === 'Opening') styleId = ' ss:StyleID="O"';
+
+        var val = (cell === null || cell === undefined) ? '' : cell;
+        var type = (typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)) && String(val).trim() !== '')) ? 'Number' : 'String';
+        if (type === 'Number' && val === '') type = 'String';
+        xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(val) + '</Data></Cell>';
+      });
+      xml += '</Row>';
+    });
+    xml += '</Table></Worksheet>';
+    return xml;
+  }
+
+  var workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>' +
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' +
+    '<Styles>' +
+    '<Style ss:ID="H"><Font ss:Bold="1" ss:Size="14" ss:Color="#C9972A"/></Style>' +
+    '<Style ss:ID="B"><Font ss:Bold="1" ss:Size="11" ss:Color="#f0ead6"/><Interior ss:Color="#1c1c1c" ss:Pattern="Solid"/></Style>' +
+    '<Style ss:ID="T"><Font ss:Bold="1" ss:Size="12" ss:Color="#C9972A"/></Style>' +
+    '<Style ss:ID="O"><Font ss:Bold="1" ss:Color="#6aabf0"/></Style>' +
+    '<Style ss:ID="I"><Font ss:Italic="1" ss:Size="10" ss:Color="#8a7f6a"/></Style>' +
+    '</Styles>' +
+    buildSheet(s1, 'Activity Report') +
+    buildSheet(s2, 'Money Flow') +
+    '</Workbook>';
+
+  var blob = new Blob([workbook], {type: 'application/vnd.ms-excel;charset=utf-8'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url;
-  a.download = 'LizLuxe-Activity-' + d.from + '_to_' + d.to + '.csv';
+  a.download = 'LizLuxe-Activity-' + d.from + '_to_' + d.to + '.xls';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast('Exported ' + d.events.length + ' transactions', 'ok');
+  toast('Exported ' + d.events.length + ' transactions (2 sheets)', 'ok');
 }
 
 function shareWhatsApp() {
   var d = _data;
-  if (!d) { toast('Load data first', 'err'); return; }
-  var msg = '*LIZ LUXE - Activity Report*' + String.fromCharCode(10);
-  msg += 'Period: ' + d.from + ' to ' + d.to + String.fromCharCode(10) + String.fromCharCode(10);
-  msg += '*Summary*' + String.fromCharCode(10);
-  msg += '- Cash In: ' + fmt(d.totalCashIn) + String.fromCharCode(10);
-  msg += '- Cash Out: ' + fmt(d.totalCashOut) + String.fromCharCode(10);
-  msg += '- Final Balance: ' + fmt(d.finalBalance) + String.fromCharCode(10);
-  if (d.finalCredit > 0) msg += '- Credit Owed: ' + fmt(d.finalCredit) + String.fromCharCode(10);
-  if (d.creditDiff && Math.abs(d.creditDiff) > 1) msg += '- Note: Event-based credit was ' + fmt(d.eventCredit) + String.fromCharCode(10);
+  if (!d || !d.events.length) { toast('Load data first', 'err'); return; }
 
-  // Show final customer balances (deduplicated by customer name)
-  var custSummary = [];
-  for (var cust in d.customerBalances) {
-    if (d.customerBalances[cust] > 0) {
-      custSummary.push(cust + ': ' + fmt(d.customerBalances[cust]));
+  var dateStr = d.from === d.to ? d.from : d.from + ' to ' + d.to;
+  var msg = '🌟 *LIZ LUXE — Activity Report*' + String.fromCharCode(10);
+  msg += '📅 ' + dateStr + String.fromCharCode(10) + String.fromCharCode(10);
+
+  // ── SALES ──
+  var sales = d.events.filter(function(e){return e.type==='sale';});
+  var totalSalesValue = sales.reduce(function(a,e){return a+(e.cashIn+e.creditChange);},0);
+  var totalCollected = d.totalCashIn;
+  var newCredit = d.events.filter(function(e){return e.type==='sale';}).reduce(function(a,e){return a+Math.max(0,e.creditChange);},0);
+
+  msg += '📊 *SALES* (' + sales.length + ' transactions)' + String.fromCharCode(10);
+  msg += '• Total Sales Value: ' + fmt(totalSalesValue) + String.fromCharCode(10);
+  msg += '• Collected: ' + fmt(totalCollected) + String.fromCharCode(10);
+  if (newCredit > 0) msg += '• New Credit: ' + fmt(newCredit) + String.fromCharCode(10);
+  msg += String.fromCharCode(10);
+
+  // ── BUYERS ──
+  if (sales.length > 0) {
+    msg += '👤 *BUYERS*' + String.fromCharCode(10);
+    sales.forEach(function(e) {
+      var cust = e.title.replace(/^Sale:\s*/,'');
+      var items = e.detail.split('\|')[0] || e.detail;
+      var total = e.cashIn + e.creditChange;
+      var status = e.creditChange > 0 ? ' (Credit: ' + fmt(e.creditChange) + ')' : ' (Paid: ' + fmt(e.cashIn) + ')';
+      msg += '• ' + cust + ' — ' + items + ' | ' + fmt(total) + ' (' + e.wallet + ')' + status + String.fromCharCode(10);
+    });
+    msg += String.fromCharCode(10);
+  }
+
+  // ── COLLECTIONS ──
+  msg += '💰 *COLLECTIONS*' + String.fromCharCode(10);
+  var cashIn = d.events.filter(function(e){return e.cashIn>0;}).reduce(function(a,e){return a+e.cashIn;},0);
+  msg += '• Total Cash In: ' + fmt(cashIn) + String.fromCharCode(10);
+  msg += '• Total Cash Out: ' + fmt(d.totalCashOut) + String.fromCharCode(10);
+  msg += String.fromCharCode(10);
+
+  // ── CREDIT ──
+  if (d.finalCredit > 0) {
+    msg += '💳 *CREDIT*' + String.fromCharCode(10);
+    msg += '• Credit Owed: ' + fmt(d.finalCredit) + String.fromCharCode(10);
+    var custSummary = [];
+    for (var cust in d.customerBalances) {
+      if (d.customerBalances[cust] > 0) {
+        custSummary.push(cust + ': ' + fmt(d.customerBalances[cust]));
+      }
     }
-  }
-  if (custSummary.length > 0) {
-    msg += '- Per Customer: ' + custSummary.slice(0, 5).join(', ') + (custSummary.length > 5 ? '...' : '') + String.fromCharCode(10);
+    if (custSummary.length > 0) {
+      msg += '• Per Customer: ' + custSummary.slice(0, 5).join(', ') + (custSummary.length > 5 ? '...' : '') + String.fromCharCode(10);
+    }
+    msg += String.fromCharCode(10);
   }
 
-  msg += '- Net Value: ' + fmt(d.finalNet) + String.fromCharCode(10) + String.fromCharCode(10);
-  msg += '_Liz Luxe POS_';
+  // ── PROFIT ──
+  var cogs = sales.reduce(function(a,e){
+    var items = e.detail.match(/\d+x\s+[^,|]+/g)||[];
+    return a + items.reduce(function(s,it){var m=it.match(/(\d+)x\s+(.+)/);if(!m)return s;var qty=parseInt(m[1]);var name=m[2].trim();var item=inv.find(function(i){return i.name===name;});return s+(item?item.buying_price*qty:0);},0);
+  },0);
+  var grossProfit = totalSalesValue - cogs;
+  var margin = totalSalesValue > 0 ? Math.round((grossProfit/totalSalesValue)*100) : 0;
+  msg += '📈 *PROFIT*' + String.fromCharCode(10);
+  msg += '• Revenue: ' + fmt(totalSalesValue) + String.fromCharCode(10);
+  msg += '• Gross Profit: ' + fmt(grossProfit) + ' (' + margin + '% margin)' + String.fromCharCode(10);
+  msg += String.fromCharCode(10);
+
+  // ── CASH POSITION ──
+  msg += '💵 *CASH POSITION*' + String.fromCharCode(10);
+  msg += '• Final Cash Balance: ' + fmt(d.finalBalance) + String.fromCharCode(10);
+  msg += '• Net Value (Cash + Credit): ' + fmt(d.finalNet) + String.fromCharCode(10);
+  msg += String.fromCharCode(10);
+
+  msg += '✨ _Liz Luxe POS_';
   window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
-}
-
-function initApp() {
+}function initApp() {
   var sel = document.getElementById('month-sel');
   var now = new Date();
   for (var i = 0; i < 24; i++) {

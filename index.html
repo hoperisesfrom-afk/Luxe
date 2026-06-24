@@ -628,7 +628,7 @@ select option{background:#1c1c1c}
             <button onclick="shareWhatsAppSummary()" style="background:var(--s2);border:1px solid rgba(37,211,102,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
               <div style="font-size:28px;margin-bottom:8px;">&#128232;</div>
               <div style="font-size:13px;font-weight:700;color:#25d366;">WhatsApp</div>
-              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Today's summary</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Activity Report</div>
             </button>
             <button onclick="showDebtorsReport()" style="background:var(--s2);border:1px solid rgba(244,67,54,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
               <div style="font-size:28px;margin-bottom:8px;">&#128308;</div>
@@ -1034,13 +1034,27 @@ function doLogout() {
 }
 
 function refreshSession() {
-  if (!refreshToken) return Promise.reject('No refresh token');
+  if (!refreshToken) {
+    // No refresh token — force re-login
+    clearSession();
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('login-err').textContent = 'Session expired. Please sign in again.';
+    return Promise.reject('Session expired — please sign in');
+  }
   return fetch(SB_AUTH + '/token?grant_type=refresh_token', {
     method: 'POST',
     headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY},
     body: JSON.stringify({refresh_token: refreshToken})
   }).then(function(r) { return r.json(); }).then(function(d) {
     if (d.access_token) { saveSession(d.access_token, d.refresh_token); return true; }
+    clearSession();
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('login-err').textContent = 'Session expired. Please sign in again.';
+    return false;
+  }).catch(function() {
+    clearSession();
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('login-err').textContent = 'Session expired. Please sign in again.';
     return false;
   });
 }
@@ -1049,17 +1063,33 @@ function req(method, table, body, qs) {
   return fetch(SB + '/' + table + (qs || ''), {method: method, headers: getHeaders(), body: body ? JSON.stringify(body) : undefined})
     .then(function(r) {
       if (r.status === 401) {
-        // Token expired — try refresh then retry once
         return refreshSession().then(function(ok) {
-          if (!ok) { doLogout(); throw new Error('Session expired. Please sign in again.'); }
+          if (!ok) { 
+            // refreshSession already showed login screen
+            throw new Error('Session expired. Please sign in again.'); 
+          }
           return fetch(SB + '/' + table + (qs || ''), {method: method, headers: getHeaders(), body: body ? JSON.stringify(body) : undefined})
             .then(function(r2) {
-              if (!r2.ok) return r2.json().then(function(e) { throw new Error(e.message || 'Error ' + r2.status); });
+              if (!r2.ok) {
+                return r2.text().then(function(txt) {
+                  try { var e = JSON.parse(txt); throw new Error(e.message || e.error_description || 'Error ' + r2.status); }
+                  catch(err) { throw new Error('Error ' + r2.status + ': ' + (txt || r2.statusText)); }
+                });
+              }
               return r2.text().then(function(t) { return t ? JSON.parse(t) : []; });
             });
+        }).catch(function(e) {
+          // If refreshSession rejected, it already showed login. Re-throw for upstream catch.
+          if (e === 'Session expired — please sign in') throw new Error(e);
+          throw e;
         });
       }
-      if (!r.ok) return r.json().then(function(e) { throw new Error(e.message || 'Error ' + r.status); });
+      if (!r.ok) {
+        return r.text().then(function(txt) {
+          try { var e = JSON.parse(txt); throw new Error(e.message || e.error_description || 'Error ' + r.status); }
+          catch(err) { throw new Error('Error ' + r.status + ': ' + (txt || r.statusText)); }
+        });
+      }
       return r.text().then(function(t) { return t ? JSON.parse(t) : []; });
     });
 }
@@ -1214,7 +1244,7 @@ function loadInv() {
   document.getElementById('inv-list').innerHTML = skelHtml();
   dbGet('inventory', '?order=name.asc').then(function(data) {
     inv = data; renderInv(); checkLow();
-  }).catch(function(e) { toast('Failed to load: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Failed to load: ' + msg, 'err'); console.error('Failed to load: ', e); });
 }
 
 function loadInvQ() {
@@ -1304,7 +1334,7 @@ function saveEdit(id) {
   var item = inv.find(function(i) { return i.id === id; });
   dbPatch('inventory', {selling_price: sell, buying_price: buy, qty: item.qty + addQ, remaining: item.remaining + addQ}, '?id=eq.' + id)
     .then(function() { toast('Updated', 'ok'); loadInv(); })
-    .catch(function(e) { toast('Error: ' + e.message, 'err'); });
+    .catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 function addItem() {
@@ -1321,7 +1351,7 @@ function addItem() {
       ['inv-name','inv-buy','inv-sell','inv-qty'].forEach(function(id) { document.getElementById(id).value = ''; });
       toggleForm(); toast('Item added', 'ok');
     })
-    .catch(function(e) { toast('Error: ' + e.message, 'err'); })
+    .catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); })
     .finally(function() { loading('add-btn', false, '+ Add to Inventory'); });
 }
 
@@ -1343,7 +1373,7 @@ function delItem(id) {
     inv = inv.filter(function(i) { return i.id !== id; });
     renderInv(); checkLow();
     toast('Removed ✓ — saved to Recycle Bin', 'ok');
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 var _restockId = null;
@@ -1396,7 +1426,7 @@ function confirmRestock() {
     .then(function() {
       renderInv(); checkLow(); closeRestockModal();
       toast('+' + qty + ' ' + item.name + (autoDeduct ? ' · ' + fmt(cost) + ' deducted' : ' · No expense recorded'), 'ok');
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
+    }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); })
     .finally(function() { btn.disabled = false; btn.textContent = '✓ Add Stock'; });
 }
 
@@ -1452,28 +1482,159 @@ function saveEditItems(id) {
   }).then(function() {
     toast('Sale updated ✓', 'ok'); allSales = []; allCustomerSales = [];
     closeEditItems(); loadHist(); checkLow();
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 // ── WhatsApp Daily Summary ──
 function shareWhatsAppSummary() {
-  var today = new Date().toISOString().slice(0, 10);
-  dbGet('sales', '?date=eq.' + today + '&select=paid,items,balance,method,customer_name,total').then(function(sales) {
+  // Show date picker for custom range, or default to today
+  var fromDate = prompt('Enter FROM date (YYYY-MM-DD):\nLeave blank for today', new Date().toISOString().slice(0, 10));
+  if (fromDate === null) return; // cancelled
+  if (!fromDate) fromDate = new Date().toISOString().slice(0, 10);
+
+  var toDate = prompt('Enter TO date (YYYY-MM-DD):\nLeave blank for same as FROM', '');
+  if (toDate === null) return; // cancelled
+  if (!toDate) toDate = fromDate;
+
+  // Validate dates
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+    toast('Invalid date format. Use YYYY-MM-DD', 'err'); return;
+  }
+
+  var query = '?date=gte.' + fromDate + '&date=lte.' + toDate + '&select=paid,items,balance,method,customer_name,total,customer_phone';
+
+  // Fetch sales for the selected period
+  dbGet('sales', query).then(function(sales) {
     var s = sales.filter(function(x) { return (x.method||'') !== 'Returned'; });
-    var rev = s.reduce(function(a,x){return a+(x.paid||0);},0);
+    var totalSalesValue = s.reduce(function(a,x){return a+(x.total||0);},0);
+    var collected = s.reduce(function(a,x){return a+(x.paid||0);},0);
+    var newCredit = s.reduce(function(a,x){return a+(x.balance||0);},0);
     var cogs = s.reduce(function(a,x){return a+(x.items||[]).reduce(function(ss,i){return ss+(i.buying_price||0)*i.qty;},0);},0);
-    var profit = rev - cogs;
-    var credit = s.reduce(function(a,x){return a+(x.balance||0);},0);
-    var cash = s.filter(function(x){return (x.method||'').toLowerCase()==='cash';}).reduce(function(a,x){return a+(x.paid||0);},0);
-    var mpesa = s.filter(function(x){return (x.method||'').toLowerCase()==='m-pesa';}).reduce(function(a,x){return a+(x.paid||0);},0);
-    var d = new Date(); var dateStr = d.toLocaleDateString('en-KE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-    var msg = '🌟 *LIZ LUXE — Daily Summary*\n📅 ' + dateStr + '\n\n';
-    msg += '📊 *Sales Overview*\n• Sales: ' + s.length + '\n• Revenue: KES ' + rev.toLocaleString() + '\n• Profit: KES ' + profit.toLocaleString() + '\n\n';
-    msg += '💰 *Collected*\n• Cash: KES ' + cash.toLocaleString() + '\n• M-Pesa: KES ' + mpesa.toLocaleString() + '\n';
-    if (credit > 0) msg += '• Credit owed: KES ' + credit.toLocaleString() + '\n';
-    msg += '\n✨ _Liz Luxe POS_';
-    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+    var grossProfit = totalSalesValue - cogs;
+    var margin = totalSalesValue > 0 ? Math.round((grossProfit / totalSalesValue) * 100) : 0;
+
+    // Fetch deductions for the selected period
+    var dateRange = fromDate === toDate ? 'date=eq.' + fromDate : 'date=gte.' + fromDate + '&date=lte.' + toDate;
+
+    return dbGet('deductions', '?' + dateRange + '&select=amount,type').then(function(deds) {
+      var totalExpenses = deds.filter(function(d){return d.type !== 'injection';}).reduce(function(a,d){return a+(d.amount||0);},0);
+      var capitalIn = deds.filter(function(d){return d.type === 'injection';}).reduce(function(a,d){return a+(d.amount||0);},0);
+
+      // === Fetch ALL historical data for true cash position (Net Balance) ===
+      return Promise.all([
+        dbGet('sales', '?select=paid,items,balance,method,split_details,payment_log'),
+        dbGet('deductions', '?select=amount,type,wallet'),
+        dbGet('transfers', '?select=from_wallet,to_wallet,amount')
+      ]).then(function(allData) {
+        var allSales = allData[0];
+        var allDeds = allData[1];
+        var allTransfers = allData[2];
+
+        // Calculate exactly like Finance tab: Net Balance = Collected - Expenses + Capital
+        // sale.paid ALREADY includes payment_log payments — do NOT double count
+        var totalCollected = allSales.reduce(function(a,s){return a+(s.paid||0);},0);
+
+        // Total expenses (all time)
+        var totalAllExpenses = allDeds.filter(function(d){return d.type !== 'injection';}).reduce(function(a,d){return a+(d.amount||0);},0);
+
+        // Total capital injected (all time)
+        var totalAllCapital = allDeds.filter(function(d){return d.type === 'injection';}).reduce(function(a,d){return a+(d.amount||0);},0);
+
+        // Net Balance = Collected - Expenses + Capital (exactly like Finance tab)
+        var netBalance = totalCollected - totalAllExpenses + totalAllCapital;
+
+        // Total credit outstanding (all time)
+        var totalAllCredit = allSales.reduce(function(a,s){return a+(s.balance||0);},0);
+
+        // Total Business Value = Net Balance + Credit
+        var totalBusinessValue = netBalance + totalAllCredit;
+
+        // Build buyer list for the selected period
+        var buyerMap = {};
+        s.forEach(function(x) {
+          var n = x.customer_name || 'Walk-in';
+          if (!buyerMap[n]) buyerMap[n] = {items: [], total: 0, credit: 0, paid: 0, method: x.method || 'Cash'};
+          (x.items||[]).forEach(function(i) {
+            buyerMap[n].items.push(i.qty + 'x ' + i.name);
+          });
+          buyerMap[n].total += x.total || 0;
+          buyerMap[n].credit += x.balance || 0;
+          buyerMap[n].paid += x.paid || 0;
+        });
+
+        // Build credit per customer for selected period
+        var creditList = [];
+        Object.keys(buyerMap).forEach(function(n) {
+          if (buyerMap[n].credit > 0) {
+            creditList.push(n + ': ' + fmt(buyerMap[n].credit).replace('KES ', 'KES '));
+          }
+        });
+
+        // Format date range
+        var dateDisplay;
+        if (fromDate === toDate) {
+          dateDisplay = new Date(fromDate+'T12:00:00').toLocaleDateString('en-KE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+        } else {
+          var fd = new Date(fromDate+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short'});
+          var td = new Date(toDate+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'long',year:'numeric'});
+          dateDisplay = fd + ' to ' + td;
+        }
+
+        var msg = '🌟 *LIZ LUXE — Activity Report*\n📅 ' + dateDisplay + '\n\n';
+
+        // SALES section
+        msg += '📊 *SALES (' + s.length + ' transactions)*\n';
+        msg += '• Total Sales Value: ' + fmt(totalSalesValue) + '\n';
+        msg += '• Collected: ' + fmt(collected) + '\n';
+        msg += '• New Credit: ' + fmt(newCredit) + '\n\n';
+
+        // BUYERS section
+        msg += '👤 *BUYERS*\n';
+        Object.keys(buyerMap).forEach(function(n) {
+          var b = buyerMap[n];
+          var itemStr = b.items.slice(0, 5).join(', ');
+          if (b.items.length > 5) itemStr += '...';
+          var paymentInfo = b.credit > 0 ? 'Credit: ' + fmt(b.credit) : (b.method + ': Paid: ' + fmt(b.paid));
+          msg += '• ' + n + ' — ' + itemStr + ' | ' + fmt(b.total) + ' (' + paymentInfo + ')' + '\n';
+        });
+        msg += '\n';
+
+        // CASH FLOW section (period only)
+        msg += '💰 *CASH FLOW (This Period)*\n';
+        msg += '• Money In: ' + fmt(collected) + '\n';
+        msg += '• Money Out: ' + fmt(totalExpenses) + '\n';
+        if (capitalIn > 0) msg += '• Capital In: ' + fmt(capitalIn) + '\n';
+        msg += '• Period Net: ' + fmt(collected - totalExpenses + capitalIn) + '\n\n';
+
+        // CREDIT section (period only)
+        msg += '💳 *CREDIT (This Period)*\n';
+        msg += '• Credit Owed: ' + fmt(newCredit) + '\n';
+        if (creditList.length) {
+          msg += '• Per Customer: ' + creditList.join(', ') + '\n';
+        }
+        msg += '\n';
+
+        // PROFIT section (period only)
+        msg += '📈 *PROFIT (This Period)*\n';
+        msg += '• Revenue: ' + fmt(totalSalesValue) + '\n';
+        msg += '• Gross Profit: ' + fmt(grossProfit) + ' (' + margin + '% margin)' + '\n\n';
+
+        // CASH POSITION — exactly 3 lines matching Finance tab Net Balance
+        msg += '💵 *CASH POSITION*\n';
+        msg += '• Cash in Hand (Net Balance): ' + fmt(netBalance) + '\n';
+        msg += '• Credit Outstanding: ' + fmt(totalAllCredit) + '\n';
+        msg += '• Total Business Value: ' + fmt(totalBusinessValue) + '\n\n';
+
+        msg += '✨ _Liz Luxe POS_';
+
+        window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+      });
+    });
+  }).catch(function(e) { 
+    var msg = e && e.message ? e.message : String(e || 'Unknown error');
+    toast('Error: ' + msg, 'err'); 
+    console.error('shareWhatsAppSummary error:', e);
+  });
 }
 
 // ── Monthly P&L ──
@@ -1516,7 +1677,7 @@ function showPL() {
       document.getElementById('pl-body').innerHTML = html;
       document.getElementById('pl-modal').classList.add('on');
       window._plData = {monthName:monthName,rev:rev,cogs:cogs,profit:profit,totExp:totExp,totInj:totInj,netBal:netBal,sales:sales.length,credit:credit,expCats:expCats};
-    }).catch(function(e){toast('Error: '+e.message,'err');});
+    }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 function sharePL() {
   var d = window._plData; if (!d) return;
@@ -1671,7 +1832,7 @@ function fetchHistPage(reset) {
     histHasMore = data.length === histPageSize;
     document.getElementById('debt-dot').classList.toggle('on', allSales.some(function(s) { return s.balance > 0; }));
     renderHistList(reset);
-  }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Failed: ' + msg, 'err'); console.error('Failed: ', e); });
 }
 
 
@@ -1881,7 +2042,7 @@ function returnSale(id) {
     toast('Return recorded — original sale preserved ✓','ok');
     allSales=[]; allCustomerSales=[];
     loadHist(); checkLow();
-  }).catch(function(e){toast('Error: '+e.message,'err');});
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 
@@ -2171,7 +2332,7 @@ function exportLedger() {
     URL.revokeObjectURL(url);
     toast('Exported ' + events.length + ' transactions ✓', 'ok');
 
-  }).catch(function(e) { toast('Export failed: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Export failed: ' + msg, 'err'); console.error('Export failed: ', e); });
 }
 
 // ── Reshare existing sale receipt from History ──
@@ -2265,7 +2426,7 @@ function showDebtorsReport() {
   html += '</div>';
   el.innerHTML = html;
     window._debtorsData = {map: map, totalOwed: totalOwed};
-  }).catch(function(e) { el.innerHTML = '<div class="empty">Error: ' + e.message + '</div>'; });
+  }).catch(function(e) { el.innerHTML = '<div class="empty">Error: ' + (e && e.message ? e.message : String(e || 'Unknown')) + '</div>'; });
 }
 
 function shareDebtorsReport() {
@@ -2489,7 +2650,7 @@ function shareDebtorsReport() {
 
   } catch(e) {
     console.error('shareDebtorsReport error:', e);
-    toast('Could not generate image: ' + e.message, 'err');
+    toast('Could not generate image: ' + (e && e.message ? e.message : String(e || 'Unknown')), 'err');
   }
 }
 
@@ -2523,7 +2684,7 @@ function showRecycleBin() {
     });
     html += '</div>';
     el.innerHTML = html;
-  }).catch(function(e) { el.innerHTML = '<div class="empty">Error: ' + e.message + '</div>'; });
+  }).catch(function(e) { el.innerHTML = '<div class="empty">Error: ' + (e && e.message ? e.message : String(e || 'Unknown')) + '</div>'; });
 }
 
 function restoreRecord(id, tableName) {
@@ -2540,14 +2701,14 @@ function restoreRecord(id, tableName) {
       if (tableName === 'inventory') { inv = []; loadInv(); }
       if (tableName === 'sales') { allSales = []; }
     });
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 function permanentDelete(id) {
   if (!confirm('Permanently delete? This CANNOT be undone.')) return;
   dbDel('deleted_records', '?id=eq.' + id)
     .then(function() { toast('Permanently deleted', 'ok'); showRecycleBin(); })
-    .catch(function(e) { toast('Error: ' + e.message, 'err'); });
+    .catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 function getLedgerRange(allTime) {
@@ -2736,7 +2897,7 @@ function loadLedgerData(allTime) {
       html+='</div>';
     });
     document.getElementById('ledger-body').innerHTML=html;
-  }).catch(function(e){document.getElementById('ledger-body').innerHTML='<div class="empty">Error: '+e.message+'</div>';});
+  }).catch(function(e){document.getElementById('ledger-body').innerHTML='<div class="empty">Error: '+(e && e.message ? e.message : String(e || 'Unknown'))+'</div>';});
 }
 
 
@@ -2956,7 +3117,7 @@ var saleData = {customer_name: cust, items: items, total: total, paid: paid, bal
       document.getElementById('cart-dot').classList.remove('on');
       checkLow();
     })
-    .catch(function(e) { toast('Error: ' + e.message, 'err'); })
+    .catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); })
     .finally(function() { loading('sale-btn', false, 'Complete Sale'); });
 }
 
@@ -3022,7 +3183,7 @@ function saveEditSale(id) {
     .then(function() {
       toast('Sale updated', 'ok');
       allSales = []; loadHist();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+    }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 function deleteSale(id) {
@@ -3041,7 +3202,7 @@ function deleteSale(id) {
   }).then(function() {
     toast('Sale deleted ✓ — saved to Recycle Bin', 'ok');
     allSales = []; allCustomerSales = []; loadHist();
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 // ── Customers Tab ──
@@ -3068,7 +3229,7 @@ function fetchCustomerPage(reset) {
     document.getElementById('debt-dot').classList.toggle('on', allCustomerSales.some(function(s) { return s.balance > 0; }));
     updateOverdueBadge();
     filterCustomers();
-  }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Failed: ' + msg, 'err'); console.error('Failed: ', e); });
 }
 
 function setCustFilter(btn, mode) {
@@ -3331,7 +3492,7 @@ function cdRecordPayment() {
     loadCustomers();
     closeCustDetail();
     showDebtReceipt(custName, amt, method, prevBalance, newBalance, today, false);
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); })
   .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; } });
 }
 
@@ -3356,7 +3517,7 @@ function cdMarkFullyPaid() {
   }).then(function() {
     allCustomerSales = []; loadCustomers(); closeCustDetail();
     showDebtReceipt(custName, balance, method, balance, 0, today, true);
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 
@@ -3488,7 +3649,7 @@ function saveCustomerPhone() {
       remindBtn.style.display = 'block';
       remindBtn.textContent = '📲 WhatsApp Remind';
     }
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 
@@ -3518,7 +3679,7 @@ function payDebt(key, idsStr) {
     return Promise.all(ps);
   }).then(function() {
     toast('Payment of ' + fmt(amt) + ' via ' + m + ' recorded', 'ok'); loadDebt();
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); })
   .finally(function() { loading('pb-' + key, false, 'Record Payment'); });
 }
 
@@ -3705,7 +3866,7 @@ function renderFin() {
         html += '</div></div>';
       });
       lg.innerHTML = html;
-    }).catch(function(e) { toast('Failed: ' + e.message, 'err'); });
+    }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Failed: ' + msg, 'err'); console.error('renderFin error:', e); });
 }
 
 function addDeduction() {
@@ -3719,7 +3880,7 @@ function addDeduction() {
     .then(function() {
       document.getElementById('ded-amt').value = ''; document.getElementById('ded-rsn').value = '';
       toast('Expense recorded', 'ok'); renderFin();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
+    }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); })
     .finally(function() { loading('ded-btn', false, 'Record Expense'); });
 }
 
@@ -3727,7 +3888,7 @@ function deleteDed(id) {
   if (!confirm('Delete this transaction? This cannot be undone.')) return;
   dbDel('deductions', '?id=eq.' + id)
     .then(function() { toast('Transaction deleted', 'ok'); renderFin(); })
-    .catch(function(e) { toast('Error: ' + e.message, 'err'); });
+    .catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 function addInjection() {
@@ -3739,7 +3900,7 @@ function addInjection() {
     .then(function() {
       document.getElementById('inj-amt').value = ''; document.getElementById('inj-rsn').value = '';
       toast('Capital injected', 'ok'); renderFin();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); })
+    }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); })
     .finally(function() { loading('inj-btn', false, 'Inject Capital'); });
 }
 
@@ -3777,7 +3938,7 @@ function exportCSV() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast('Exported ' + sales.length + ' sales', 'ok');
-  }).catch(function(e) { toast('Export failed: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Export failed: ' + msg, 'err'); console.error('Export failed: ', e); });
 }
 
 function recordTransfer() {
@@ -3794,7 +3955,7 @@ function recordTransfer() {
       document.getElementById('wt-note').value = '';
       toast(fmt(amt) + ' moved from ' + from + ' to ' + to, 'ok');
       loadTransfers();
-    }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+    }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 var _transfers = [];
@@ -3837,7 +3998,7 @@ function fixBalanceMismatch() {
       toast('Fixed ' + ps.length + ' records ✓', 'ok');
       renderFin();
     });
-  }).catch(function(e) { toast('Error: ' + e.message, 'err'); });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
 function getWalletAdjustments() {
@@ -4226,6 +4387,11 @@ if (typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY_HE
 }
 
 function initApp() {
+  if (!authToken) {
+    // Not authenticated — show login
+    document.getElementById('login-screen').classList.remove('hidden');
+    return;
+  }
   initDate();
   showTab('inventory', document.querySelector('.bni[data-tab=inventory]'));
   if (document.getElementById('lock-hint')) {
@@ -4240,12 +4406,13 @@ if (loadSession()) {
   // Have a saved token — try to use it; if expired, refresh
   document.getElementById('login-screen').classList.add('hidden');
   refreshSession().then(function(ok) {
-    if (ok) { initApp();
-    backfillReceiptRefs(); }
+    if (ok) { initApp(); backfillReceiptRefs(); }
     else { clearSession(); document.getElementById('login-screen').classList.remove('hidden'); }
-  }).catch(function() {
-    // Refresh failed but token might still be valid — try anyway
-    initApp();
+  }).catch(function(err) {
+    // Refresh failed — show login, don't try to init with bad token
+    clearSession();
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('login-err').textContent = err || 'Session expired. Please sign in again.';
   });
 } else {
   // No session — show login
@@ -4518,7 +4685,7 @@ function submitQuickSale() {
     loadInv();
     checkLow();
   }).catch(function(e) {
-    toast('Error: ' + e.message, 'err');
+    toast('Error: ' + (e && e.message ? e.message : String(e || 'Unknown')), 'err');
     btn.disabled = false;
     btn.textContent = 'Complete Quick Sale';
   });
@@ -4656,9 +4823,7 @@ function performBackup() {
     showBackupNotification(backup);
 
     toast('Backup saved: ' + r[0].length + ' sales, ' + r[2].length + ' items', 'ok');
-  }).catch(function(e) {
-    toast('Backup failed: ' + e.message, 'err');
-  });
+  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Backup failed: ' + msg, 'err'); console.error('Backup failed: ', e); });
 }
 
 function cleanupOldBackups() {
@@ -4856,7 +5021,7 @@ function executeRestore() {
   // Step 2: Restore inventory
   var invPs = data.inventory.map(function(item) {
     var clean = {name: item.name, category: item.category, buying_price: item.buying_price, selling_price: item.selling_price, qty: item.qty, remaining: item.remaining};
-    return dbPost('inventory', clean).catch(function(e) { return {error: e.message, item: item.name}; });
+    return dbPost('inventory', clean).catch(function(e) { return {error: e && e.message ? e.message : String(e || 'Unknown'), item: item.name}; });
   });
 
   Promise.all(invPs).then(function(results) {
@@ -4868,7 +5033,7 @@ function executeRestore() {
     logMsg('💰 Step 2/5: Restoring sales...');
     var salePs = data.sales.map(function(s) {
       var clean = {customer_name: s.customer_name, items: s.items, total: s.total, paid: s.paid, balance: s.balance, method: s.method, date: s.date, receipt_ref: s.receipt_ref || genRef(), discount_amount: s.discount_amount || 0, customer_phone: s.customer_phone || null, payment_log: s.payment_log || [], split_details: s.split_details || null};
-      return dbPost('sales', clean).catch(function(e) { return {error: e.message, ref: s.receipt_ref}; });
+      return dbPost('sales', clean).catch(function(e) { return {error: e && e.message ? e.message : String(e || 'Unknown'), ref: s.receipt_ref}; });
     });
     return Promise.all(salePs);
   }).then(function(results) {
@@ -4880,7 +5045,7 @@ function executeRestore() {
     logMsg('💸 Step 3/5: Restoring expenses & capital...');
     var dedPs = data.deductions.map(function(d) {
       var clean = {amount: d.amount, reason: d.reason, category: d.category, type: d.type, wallet: d.wallet || null, date: d.date};
-      return dbPost('deductions', clean).catch(function(e) { return {error: e.message}; });
+      return dbPost('deductions', clean).catch(function(e) { return {error: e && e.message ? e.message : String(e || 'Unknown')}; });
     });
     return Promise.all(dedPs);
   }).then(function(results) {
@@ -4892,7 +5057,7 @@ function executeRestore() {
     logMsg('🔄 Step 4/5: Restoring transfers...');
     var transPs = data.transfers.map(function(t) {
       var clean = {from_wallet: t.from_wallet, to_wallet: t.to_wallet, amount: t.amount, note: t.note || '', date: t.date};
-      return dbPost('transfers', clean).catch(function(e) { return {error: e.message}; });
+      return dbPost('transfers', clean).catch(function(e) { return {error: e && e.message ? e.message : String(e || 'Unknown')}; });
     });
     return Promise.all(transPs);
   }).then(function(results) {
@@ -4912,8 +5077,8 @@ function executeRestore() {
       btn.textContent = '⚠️ CONFIRM RESTORE';
     }, 2000);
   }).catch(function(e) {
-    logMsg('❌ Error: ' + e.message);
-    toast('Restore failed: ' + e.message, 'err');
+    logMsg('❌ Error: ' + (e && e.message ? e.message : String(e || 'Unknown')));
+    toast('Restore failed: ' + (e && e.message ? e.message : String(e || 'Unknown')), 'err');
     btn.disabled = false;
     btn.textContent = '⚠️ CONFIRM RESTORE';
   });
