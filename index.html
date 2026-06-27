@@ -4615,8 +4615,7 @@ function recordProfitSweep(fromWallet, amount, date, ref, customer) {
     to_wallet: 'Profit',
     amount: amount,
     note: 'Profit from ' + (customer || 'sale') + ' — ' + ref,
-    date: date,
-    type: 'profit_sweep'
+    date: date
   }).then(function() {
     toast('💰 Profit ' + fmt(amount) + ' swept to Profit wallet', 'ok');
     loadTransfers();
@@ -4634,8 +4633,7 @@ function reverseProfitSweep(amount, date, ref) {
     to_wallet: 'Cash',
     amount: amount,
     note: 'Reversed profit from returned sale — ' + ref,
-    date: date,
-    type: 'profit_reverse'
+    date: date
   }).then(function() {
     toast('Profit ' + fmt(amount) + ' returned from Profit wallet', 'ok');
     loadTransfers();
