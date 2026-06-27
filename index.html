@@ -290,6 +290,258 @@ select option{background:#1c1c1c}
 .ldsum-val{font-weight:700;}
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script>
+// ═══════════════════════════════════════════════════════════════
+// ══ PROFIT SWEEP LEDGER FUNCTIONS ══
+// ═══════════════════════════════════════════════════════════════
+
+var _profitLedgerData = null;
+
+function showProfitSweepLedger() {
+  document.getElementById('profit-ledger-modal').classList.add('on');
+
+  // Populate month selector
+  var sel = document.getElementById('pl-month-sel');
+  if (sel.options.length <= 1) {
+    var now = new Date();
+    for (var i = 0; i < 24; i++) {
+      var d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      var val = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0');
+      var label = d2.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+      var opt = document.createElement('option');
+      opt.value = val; opt.textContent = label;
+      if (i === 0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  // Default to current month
+  var now = new Date();
+  var curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  document.getElementById('pl-from').value = curMonth + '-01';
+  document.getElementById('pl-to').value = now.toISOString().slice(0,10);
+
+  loadProfitLedgerData();
+}
+
+function getProfitLedgerRange() {
+  var from = document.getElementById('pl-from').value;
+  var to = document.getElementById('pl-to').value;
+  if (from && to) return {from: from, to: to};
+  if (from && !to) return {from: from, to: new Date().toISOString().slice(0, 10)};
+  if (!from && to) return {from: '2000-01-01', to: to};
+  var sel = document.getElementById('pl-month-sel');
+  var month = sel ? sel.value : '';
+  if (month) {
+    var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+    return {from: month + '-01', to: month + '-' + String(last.getDate()).padStart(2, '0')};
+  }
+  return {from: '2000-01-01', to: new Date().toISOString().slice(0, 10)};
+}
+
+function onProfitLedgerMonthChange() {
+  document.getElementById('pl-from').value = '';
+  document.getElementById('pl-to').value = '';
+  loadProfitLedgerData();
+}
+
+function onProfitLedgerDateChange() {
+  document.getElementById('pl-month-sel').value = '';
+  loadProfitLedgerData();
+}
+
+function clearProfitLedgerFilter() {
+  document.getElementById('pl-from').value = '';
+  document.getElementById('pl-to').value = '';
+  document.getElementById('pl-month-sel').value = '';
+  loadProfitLedgerData();
+}
+
+function loadProfitLedgerData() {
+  var el = document.getElementById('profit-ledger-body');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  var range = getProfitLedgerRange();
+
+  // Fetch transfers (profit sweeps) and sales with profit data
+  Promise.all([
+    dbGet('transfers', '?date=gte.'+range.from+'&date=lte.'+range.to+'&order=date.desc'),
+    dbGet('sales', '?date=gte.'+range.from+'&date=lte.'+range.to+'&order=date.desc')
+  ]).then(function(r) {
+    var transfers = r[0] || [];
+    var sales = r[1] || [];
+
+    // Build ledger entries from transfers
+    var entries = [];
+
+    // Profit sweeps (transfers TO Profit)
+    transfers.forEach(function(t) {
+      if (t.to_wallet === 'Profit') {
+        entries.push({
+          date: t.date,
+          description: t.note || 'Profit sweep',
+          amount: t.amount || 0,
+          type: 'sweep',
+          wallet: t.from_wallet || 'Unknown',
+          ref: t.note || ''
+        });
+      }
+      // Profit reversals (transfers FROM Profit)
+      if (t.from_wallet === 'Profit') {
+        entries.push({
+          date: t.date,
+          description: t.note || 'Profit reversal',
+          amount: -(t.amount || 0),
+          type: 'reverse',
+          wallet: t.to_wallet || 'Unknown',
+          ref: t.note || ''
+        });
+      }
+    });
+
+    // Calculate pending profit (from credit sales that haven't been paid)
+    var pendingProfit = 0;
+    sales.forEach(function(s) {
+      if ((s.method || '').indexOf('Returned') >= 0) return;
+      if ((s.balance || 0) > 0 && (s.profit || 0) > 0) {
+        // Profit portion of unpaid amount
+        var unpaidRatio = s.balance / (s.total || 1);
+        pendingProfit += Math.round(s.profit * unpaidRatio * 100) / 100;
+      }
+    });
+
+    // Sort by date desc
+    entries.sort(function(a, b) { return b.date.localeCompare(a.date); });
+
+    // Calculate totals
+    var totalSwept = entries.reduce(function(s, e) { return s + (e.type === 'sweep' ? e.amount : 0); }, 0);
+    var totalReversed = entries.reduce(function(s, e) { return s + (e.type === 'reverse' ? Math.abs(e.amount) : 0); }, 0);
+    var netProfit = totalSwept - totalReversed;
+
+    // Update summary
+    document.getElementById('pl-total-swept').textContent = fmt(totalSwept);
+    document.getElementById('pl-total-reversed').textContent = fmt(totalReversed);
+    document.getElementById('pl-net-profit').textContent = fmt(netProfit);
+    document.getElementById('pl-pending').textContent = fmt(pendingProfit);
+
+    // Update subtitle
+    var sub = entries.length + ' entries';
+    if (range.from !== '2000-01-01') sub += ' · ' + range.from + ' to ' + range.to;
+    document.getElementById('profit-ledger-subtitle').textContent = sub;
+
+    // Render table
+    if (!entries.length) {
+      el.innerHTML = '<div class="empty">No profit movements for this period</div>';
+      return;
+    }
+
+    var html = '';
+    entries.forEach(function(e) {
+      var dateStr = e.date ? new Date(e.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short'}) : '';
+      var isSweep = e.type === 'sweep';
+      var amtColor = isSweep ? 'var(--ok)' : 'var(--err)';
+      var typeLabel = isSweep ? '💰 Sweep' : '↩ Reverse';
+      var typeBg = isSweep ? 'rgba(123,201,80,.15)' : 'rgba(224,96,96,.15)';
+      var typeColor = isSweep ? 'var(--ok)' : 'var(--err)';
+
+      html += '<div style="display:grid;grid-template-columns:80px 1fr 100px 100px 100px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--b3);font-size:12px;">';
+      html += '<div style="color:var(--t2);font-size:11px;">' + dateStr + '</div>';
+      html += '<div><div style="font-weight:600;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHtml(e.description) + '</div></div>';
+      html += '<div style="text-align:right;font-weight:700;color:' + amtColor + ';">' + (isSweep ? '+' : '') + fmt(Math.abs(e.amount)) + '</div>';
+      html += '<div style="text-align:center;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:' + typeBg + ';color:' + typeColor + ';">' + typeLabel + '</span></div>';
+      html += '<div style="text-align:center;color:var(--t2);font-size:11px;">' + e.wallet + '</div>';
+      html += '</div>';
+    });
+
+    el.innerHTML = html;
+
+    // Store for export
+    window._profitLedgerData = {
+      entries: entries,
+      totalSwept: totalSwept,
+      totalReversed: totalReversed,
+      netProfit: netProfit,
+      pendingProfit: pendingProfit,
+      range: range
+    };
+  }).catch(function(e) {
+    el.innerHTML = '<div class="empty">Error: ' + (e && e.message ? e.message : String(e || 'Unknown')) + '</div>';
+  });
+}
+
+function exportProfitLedger() {
+  var d = window._profitLedgerData;
+  if (!d || !d.entries.length) { toast('No data to export', 'err'); return; }
+  toast('Preparing export...', 'ok');
+
+  var rows = [
+    ['LIZ LUXE — PROFIT SWEEP LEDGER'],
+    [],
+    ['Period: ' + d.range.from + ' to ' + d.range.to],
+    ['Total Swept:', d.totalSwept, 'Total Reversed:', d.totalReversed, 'Net Profit:', d.netProfit, 'Pending:', d.pendingProfit],
+    [],
+    ['Date','Description','Amount','Type','Source Wallet']
+  ];
+
+  d.entries.forEach(function(e) {
+    rows.push([
+      e.date,
+      e.description,
+      e.amount,
+      e.type === 'sweep' ? 'Profit Sweep' : 'Profit Reversal',
+      e.wallet
+    ]);
+  });
+
+  // Build Excel XML
+  function buildWorkbook(sheets) {
+    function escXml(v) {
+      if (v === null || v === undefined) return '';
+      return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>';
+    xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+    xml += '<Styles>';
+    xml += '<Style ss:ID="H"><Font ss:Bold="1" ss:Size="13" ss:Color="#C9972A"/></Style>';
+    xml += '<Style ss:ID="B"><Font ss:Bold="1"/></Style>';
+    xml += '<Style ss:ID="T"><Font ss:Bold="1" ss:Size="11"/></Style>';
+    xml += '</Styles>';
+    sheets.forEach(function(s) {
+      xml += '<Worksheet ss:Name="' + escXml(s.name) + '"><Table>';
+      s.rows.forEach(function(row, ri) {
+        if (!row || !row.length) { xml += '<Row></Row>'; return; }
+        xml += '<Row>';
+        row.forEach(function(cell) {
+          var styleId = '';
+          if (ri === 0) styleId = ' ss:StyleID="H"';
+          else if (ri === 2) styleId = ' ss:StyleID="B"';
+          var val = (cell === null || cell === undefined) ? '' : cell;
+          var type = (typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)) && val.trim() !== '')) ? 'Number' : 'String';
+          if (type === 'Number' && val === '') type = 'String';
+          xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(val) + '</Data></Cell>';
+        });
+        xml += '</Row>';
+      });
+      xml += '</Table></Worksheet>';
+    });
+    xml += '</Workbook>';
+    return xml;
+  }
+
+  var workbook = buildWorkbook([{name: 'Profit Ledger', rows: rows}]);
+  var blob = new Blob([workbook], {type: 'application/vnd.ms-excel;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'LizLuxe-ProfitLedger-' + d.range.from + '_to_' + d.range.to + '.xls';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported ' + d.entries.length + ' entries ✓', 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════
+
+</script>
 </head>
 <body>
 
@@ -528,8 +780,9 @@ select option{background:#1c1c1c}
             <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#f44336;"></div>Credit (Owed to you)</div><div class="money-row-val" id="mb-credit" style="color:#f44336;">KES 0</div></div>
             <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#ff9800;"></div>Split</div><div class="money-row-val" id="mb-split" style="color:#ff9800;">KES 0</div></div>
             <div class="money-row"><div class="money-row-label"><div class="money-dot" style="background:#607d8b;"></div>Bank</div><div class="money-row-val" id="mb-bank" style="color:#607d8b;">KES 0</div></div>
+            <div class="money-row" style="border-top:2px solid var(--b2);padding-top:10px;margin-top:8px;"><div class="money-row-label"><div class="money-dot" style="background:#C9972A;"></div>💰 Profit (Your Money)</div><div class="money-row-val" id="mb-profit" style="color:#C9972A;">KES 0</div></div>
             <div class="money-total-row">
-              <span style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">Total Value</span>
+              <span style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.05em;">Total Business Value</span>
               <span style="font-size:18px;font-weight:800;color:var(--gold);" id="mb-total">KES 0</span>
             </div>
           </div>
@@ -570,6 +823,7 @@ select option{background:#1c1c1c}
                   <option value="Cash">Cash</option>
                   <option value="M-Pesa">M-Pesa</option>
                   <option value="Bank">Bank</option>
+                  <option value="Profit">💰 Profit (Do Not Touch)</option>
                 </select>
               </div>
             </div>
@@ -590,12 +844,14 @@ select option{background:#1c1c1c}
                 <option value="Cash">Cash</option>
                 <option value="M-Pesa" selected>M-Pesa</option>
                 <option value="Bank">Bank</option>
+                <option value="Profit">💰 Profit</option>
               </select>
               <div class="wallet-arrow">&#10132;</div>
               <select class="wallet-sel" id="wt-to">
                 <option value="Cash" selected>Cash</option>
                 <option value="M-Pesa">M-Pesa</option>
                 <option value="Bank">Bank</option>
+                <option value="Profit">💰 Profit</option>
               </select>
             </div>
             <div class="g12"><label>Amount (KES)</label><input id="wt-amt" type="number" placeholder="e.g. 500"></div>
@@ -635,8 +891,23 @@ select option{background:#1c1c1c}
               <div style="font-size:13px;font-weight:700;color:var(--err);">Debtors Report</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Outstanding balances</div>
             </button>
+            <button onclick="showCashFlowReport()" style="background:var(--s2);border:1px solid rgba(76,175,80,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128178;</div>
+              <div style="font-size:13px;font-weight:700;color:#4caf50;">Cash Flow Report</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Money in &amp; out by date</div>
+            </button>
             <button onclick="showRecycleBin()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
-              <div style="font-size:28px;margin-bottom:8px;">&#128465;</div>
+              <div style="font-size:28px;margin-bottom:8px;">&#128465;
+            <button onclick="showItemSalesReport()" style="background:var(--s2);border:1px solid rgba(201,151,42,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128717;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--gold);">Item Sales Report</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Items sold, profit &amp; margin</div>
+            </button>
+            <button onclick="showProfitSweepLedger()" style="background:var(--s2);border:1px solid rgba(201,151,42,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128176;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--gold);">Profit Sweep Ledger</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Track profit moved to Profit wallet</div>
+            </button></div>
               <div style="font-size:13px;font-weight:700;color:var(--t2);">Recycle Bin</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Deleted items &amp; sales</div>
             </button>
@@ -821,6 +1092,7 @@ select option{background:#1c1c1c}
           <option value="M-Pesa">M-Pesa</option>
           <option value="Cash">Cash</option>
           <option value="Bank">Bank</option>
+          <option value="Profit">💰 Profit</option>
         </select>
       </div>
     </div>
@@ -908,6 +1180,29 @@ select option{background:#1c1c1c}
   <div class="edit-items-body" id="debtors-body"></div>
 </div>
 
+<!-- ══ CASH FLOW REPORT MODAL ══ -->
+<div class="edit-items-modal" id="cashflow-modal">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button onclick="document.getElementById('cashflow-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+      <div style="font-weight:700;font-size:16px;">Cash Flow Report</div>
+    </div>
+    <button onclick="shareCashFlowReport()" style="background:none;border:none;color:#25d366;font-size:20px;cursor:pointer;">&#128232;</button>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--b);flex-wrap:wrap;">
+    <select id="cf-month-sel" onchange="onCashFlowMonthChange()" style="flex:1;padding:8px 10px;font-size:12px;background:var(--s3);min-width:120px;">
+      <option value="">&#128197; Pick month...</option>
+    </select>
+    <div style="display:flex;gap:6px;align-items:center;flex:2;">
+      <input type="date" id="cf-from" onchange="onCashFlowDateChange()" style="flex:1;padding:8px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);">
+      <span style="color:var(--t2);font-size:12px;">to</span>
+      <input type="date" id="cf-to" onchange="onCashFlowDateChange()" style="flex:1;padding:8px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);">
+    </div>
+    <button onclick="clearCashFlowFilter()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:8px 10px;font-size:11px;color:var(--t2);cursor:pointer;">All</button>
+  </div>
+  <div class="edit-items-body" id="cashflow-body"></div>
+</div>
+
 <!-- ══ RECYCLE BIN MODAL ══ -->
 <div class="edit-items-modal" id="recycle-modal">
   <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
@@ -963,59 +1258,36 @@ function doLogin() {
   if (!email || !password) { err.textContent = 'Please enter email and password.'; return; }
   btn.disabled = true; btn.textContent = 'Signing in...'; err.textContent = '';
 
-  // Try the modern Supabase auth endpoint first, fallback to legacy
-  var endpoints = [
-    SB_AUTH + '/token?grant_type=password',
-    'https://atydgofseradfblzrdbn.supabase.co/auth/v1/token?grant_type=password'
-  ];
-
-  function tryLogin(endpointIndex) {
-    if (endpointIndex >= endpoints.length) {
-      err.textContent = 'All auth endpoints failed. Check Supabase status.';
-      btn.disabled = false; btn.textContent = 'Sign In';
-      return;
-    }
-
-    fetch(endpoints[endpointIndex], {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'apikey': ANON_KEY},
-      body: JSON.stringify({email: email, password: password})
-    }).then(function(r) {
-      // Check for HTTP errors
+  fetch(SB_AUTH + '/token?grant_type=password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': ANON_KEY,
+      'Authorization': 'Bearer ' + ANON_KEY
+    },
+    body: JSON.stringify({email: email, password: password})
+  }).then(function(r) {
+    return r.json().then(function(data) {
       if (!r.ok) {
-        return r.json().then(function(d) {
-          throw new Error(d.error_description || d.message || d.msg || 'HTTP ' + r.status);
-        }).catch(function(e) {
-          if (e.message.indexOf('HTTP') === 0) throw e;
-          throw new Error('HTTP ' + r.status + ' — ' + (r.statusText || 'Auth failed'));
-        });
+        var msg = data.error_description || data.message || data.msg || data.error || ('Auth failed (HTTP ' + r.status + ')');
+        throw new Error(msg);
       }
-      return r.json();
-    }).then(function(d) {
-      if (d.access_token) {
-        saveSession(d.access_token, d.refresh_token);
-        document.getElementById('login-screen').classList.add('hidden');
-        initApp();
-      } else if (d.session && d.session.access_token) {
-        // Newer Supabase response format
-        saveSession(d.session.access_token, d.session.refresh_token);
-        document.getElementById('login-screen').classList.add('hidden');
-        initApp();
-      } else {
-        throw new Error(d.error_description || d.msg || 'No access token returned');
-      }
-    }).catch(function(e) {
-      if (endpointIndex === 0) {
-        // Try fallback endpoint
-        tryLogin(1);
-      } else {
-        err.textContent = e.message || 'Network error. Check your connection.';
-        btn.disabled = false; btn.textContent = 'Sign In';
-      }
+      return data;
     });
-  }
-
-  tryLogin(0);
+  }).then(function(d) {
+    var accessToken = d.access_token || (d.session && d.session.access_token);
+    var refreshToken = d.refresh_token || (d.session && d.session.refresh_token);
+    if (!accessToken) {
+      throw new Error(d.error_description || d.msg || 'No access token returned');
+    }
+    saveSession(accessToken, refreshToken);
+    document.getElementById('login-screen').classList.add('hidden');
+    initApp();
+  }).catch(function(e) {
+    console.error('Login error:', e);
+    err.textContent = e.message || 'Network error. Check your connection.';
+    btn.disabled = false; btn.textContent = 'Sign In';
+  });
 }
 
 function doLogout() {
@@ -1904,13 +2176,7 @@ function loadMoreHist() {
 
 
 // ── Customers Tab ──
-var allCustomerSales = [];
-var custFilterMode = 'all';
-
-
-
-
-var _cdSales = [], _cdPayMethod = 'Cash';
+// Variables already declared above: allCustomerSales, custFilterMode, _cdSales
 
 
 
@@ -2030,7 +2296,7 @@ function returnSale(id) {
   var itemList = (sale.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(', ');
   var reason = prompt('Reason for return (optional):','');
   if (reason === null) return;
-  if (!confirm('Process return for '+sale.customer_name+'?\n'+itemList+'\nTotal: '+fmt(sale.total)+'\n\nOriginal sale stays intact. A return record will be created.')) return;
+  if (!confirm('Process return for '+sale.customer_name+'?\n'+itemList+'\nTotal: '+fmt(sale.total)+'\n\nA return record will be created and the original sale marked as Returned.')) return;
   var today = new Date().toISOString().slice(0,10);
   var ps = (sale.items||[]).map(function(i) {
     var it = inv.find(function(iv){return iv.id===i.id;});
@@ -2038,6 +2304,11 @@ function returnSale(id) {
     var nr = it.remaining + i.qty;
     return dbPatch('inventory',{remaining:nr},'?id=eq.'+i.id).then(function(){it.remaining=nr;});
   });
+  // Mark original sale as Returned — preserve paid/balance for audit trail
+  ps.push(dbPatch('sales', {
+    method: 'Returned',
+    customer_name: sale.customer_name + ' [RETURNED]'
+  }, '?id=eq.' + sale.id));
   ps.push(dbPost('returns',{
     original_sale_id: sale.id,
     customer_name: sale.customer_name,
@@ -2047,7 +2318,7 @@ function returnSale(id) {
     reason: reason||''
   }));
   Promise.all(ps).then(function(){
-    toast('Return recorded — original sale preserved ✓','ok');
+    toast('Return recorded — original sale marked as Returned ✓','ok');
     allSales=[]; allCustomerSales=[];
     loadHist(); checkLow();
   }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
@@ -2073,7 +2344,7 @@ function showFinTab(name, btn) {
 
 
 
-var _transfers = [];
+// _transfers already declared above
 
 // ── Export Ledger to Excel (multi-sheet CSV packaged as XLSX via SheetJS-style raw XML) ──
 function exportLedger() {
@@ -2385,7 +2656,7 @@ function showDebtorsReport() {
   document.getElementById('debtors-modal').classList.add('on');
   var el = document.getElementById('debtors-body');
   el.innerHTML = '<div class="empty">Loading...</div>';
-  dbGet('sales', '?balance=gt.0&order=customer_name.asc').then(function(sales) {
+  dbGet('sales', '?balance=gt.0&method=neq.Returned&order=customer_name.asc').then(function(sales) {
     if (!sales.length) { el.innerHTML = '<div class="empty" style="padding:40px;">No outstanding debts 🎉</div>'; return; }
     var map = {};
     sales.forEach(function(s) {
@@ -2663,6 +2934,280 @@ function shareDebtorsReport() {
 }
 
 // ── Recycle Bin ──
+// ── Cash Flow Report ──
+var _cashFlowData = null;
+
+function showCashFlowReport() {
+  document.getElementById('cashflow-modal').classList.add('on');
+  // Populate month selector once
+  var sel = document.getElementById('cf-month-sel');
+  if (sel.options.length <= 1) {
+    var now = new Date();
+    for (var i = 0; i < 24; i++) {
+      var d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      var val = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0');
+      var label = d2.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+      var opt = document.createElement('option');
+      opt.value = val; opt.textContent = label;
+      if (i === 0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  // Default to current month
+  var now = new Date();
+  var curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0);
+  document.getElementById('cf-from').value = curMonth + '-01';
+  document.getElementById('cf-to').value = now.toISOString().slice(0,10);
+  loadCashFlowData();
+}
+
+function getCashFlowRange() {
+  var from = document.getElementById('cf-from').value;
+  var to = document.getElementById('cf-to').value;
+  if (from && to) return {from: from, to: to};
+  if (from && !to) return {from: from, to: new Date().toISOString().slice(0, 10)};
+  if (!from && to) return {from: '2000-01-01', to: to};
+  var sel = document.getElementById('cf-month-sel');
+  var month = sel ? sel.value : '';
+  if (month) {
+    var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+    return {from: month + '-01', to: month + '-' + String(last.getDate()).padStart(2, '0')};
+  }
+  // Default: all time from 2000-01-01 to today
+  return {from: '2000-01-01', to: new Date().toISOString().slice(0, 10)};
+}
+
+function onCashFlowMonthChange() {
+  document.getElementById('cf-from').value = '';
+  document.getElementById('cf-to').value = '';
+  loadCashFlowData();
+}
+
+function onCashFlowDateChange() {
+  document.getElementById('cf-month-sel').value = '';
+  loadCashFlowData();
+}
+
+function clearCashFlowFilter() {
+  document.getElementById('cf-from').value = '';
+  document.getElementById('cf-to').value = '';
+  document.getElementById('cf-month-sel').value = '';
+  loadCashFlowData();
+}
+
+function loadCashFlowData() {
+  var el = document.getElementById('cashflow-body');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  var range = getCashFlowRange();
+
+  Promise.all([
+    dbGet('sales', '?date=gte.'+range.from+'&date=lte.'+range.to+'&order=date.asc'),
+    dbGet('deductions', '?date=gte.'+range.from+'&date=lte.'+range.to+'&order=date.asc'),
+    dbGet('transfers', '?date=gte.'+range.from+'&date=lte.'+range.to+'&order=date.asc')
+  ]).then(function(r) {
+    var sales = r[0], deds = r[1], transfers = r[2];
+
+    // Build daily cash flow map
+    var dayMap = {};
+    var dayOrder = [];
+
+    // Money IN from sales (only collected amounts, not credit)
+    sales.forEach(function(s) {
+      if ((s.method || '').indexOf('Returned') >= 0) return; // Skip returns
+      var d = s.date;
+      if (!dayMap[d]) { dayMap[d] = {in: 0, out: 0, sales: 0, cogs: 0, credit: 0, expenses: 0, capital: 0, transfersOut: 0, transfersIn: 0, details: []}; dayOrder.push(d); }
+      var dm = dayMap[d];
+      dm.sales++;
+      dm.in += s.paid || 0;
+      dm.credit += s.balance || 0;
+      var dayCogs = (s.items || []).reduce(function(a, i) { return a + (i.buying_price || 0) * i.qty; }, 0);
+      dm.cogs += dayCogs;
+      dm.details.push({type: 'sale', desc: s.customer_name, amount: s.paid || 0, method: s.method, balance: s.balance || 0});
+    });
+
+    // Money OUT from expenses
+    deds.forEach(function(d) {
+      var date = d.date;
+      if (!dayMap[date]) { dayMap[date] = {in: 0, out: 0, sales: 0, cogs: 0, credit: 0, expenses: 0, capital: 0, transfersOut: 0, transfersIn: 0, details: []}; dayOrder.push(date); }
+      var dm = dayMap[date];
+      if (d.type === 'injection') {
+        dm.in += d.amount || 0;
+        dm.capital += d.amount || 0;
+        dm.details.push({type: 'capital', desc: d.reason || 'Capital', amount: d.amount || 0});
+      } else {
+        dm.out += d.amount || 0;
+        dm.expenses += d.amount || 0;
+        dm.details.push({type: 'expense', desc: d.reason || 'Expense', amount: d.amount || 0, category: d.category});
+      }
+    });
+
+    // Transfers (neutral - money moved between wallets, not in/out of business)
+    transfers.forEach(function(t) {
+      var date = t.date;
+      if (!dayMap[date]) { dayMap[date] = {in: 0, out: 0, sales: 0, cogs: 0, credit: 0, expenses: 0, capital: 0, transfersOut: 0, transfersIn: 0, details: []}; dayOrder.push(date); }
+      var dm = dayMap[date];
+      dm.transfersOut += t.amount || 0;
+      dm.details.push({type: 'transfer', desc: t.from_wallet + ' → ' + t.to_wallet, amount: t.amount || 0, note: t.note});
+    });
+
+    // Sort dates
+    dayOrder.sort();
+    dayOrder = dayOrder.filter(function(v, i, a) { return a.indexOf(v) === i; });
+
+    if (!dayOrder.length) {
+      el.innerHTML = '<div class="empty" style="padding:40px;">No cash flow data for this period</div>';
+      return;
+    }
+
+    // Calculate running balance
+    var running = 0;
+    var grandTotalIn = 0, grandTotalOut = 0, grandSales = 0, grandExpenses = 0, grandCapital = 0, grandCredit = 0, grandCogs = 0;
+
+    var html = '<div style="padding:16px;">';
+
+    // Summary card
+    dayOrder.forEach(function(d) {
+      var dm = dayMap[d];
+      grandTotalIn += dm.in;
+      grandTotalOut += dm.out;
+      grandSales += dm.sales;
+      grandExpenses += dm.expenses;
+      grandCapital += dm.capital;
+      grandCredit += dm.credit;
+      grandCogs += dm.cogs;
+    });
+
+    var netFlow = grandTotalIn - grandTotalOut;
+    var grossProfit = grandTotalIn - grandCogs;
+
+    html += '<div style="background:linear-gradient(135deg,rgba(76,175,80,.15),rgba(76,175,80,.05));border:1px solid rgba(76,175,80,.2);border-radius:var(--r);padding:16px;margin-bottom:16px;">';
+    html += '<div style="font-size:11px;color:#4caf50;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">&#128178; Period Summary</div>';
+    html += '<div class="daily-grid">';
+    html += '<div class="daily-cell"><div class="daily-val" style="color:#4caf50;">' + fmt(grandTotalIn) + '</div><div class="daily-lbl">Money In</div></div>';
+    html += '<div class="daily-cell"><div class="daily-val" style="color:var(--err);">' + fmt(grandTotalOut) + '</div><div class="daily-lbl">Money Out</div></div>';
+    html += '<div class="daily-cell"><div class="daily-val" style="color:' + (netFlow >= 0 ? 'var(--ok)' : 'var(--err)') + ';">' + fmt(netFlow) + '</div><div class="daily-lbl">Net Flow</div></div>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;">';
+    html += '<div class="daily-cell"><div class="daily-val" style="font-size:14px;color:var(--gold);">' + grandSales + '</div><div class="daily-lbl" style="font-size:9px;">Sales</div></div>';
+    html += '<div class="daily-cell"><div class="daily-val" style="font-size:14px;color:var(--err);">' + fmt(grandExpenses) + '</div><div class="daily-lbl" style="font-size:9px;">Expenses</div></div>';
+    html += '<div class="daily-cell"><div class="daily-val" style="font-size:14px;color:var(--info);">' + fmt(grandCapital) + '</div><div class="daily-lbl" style="font-size:9px;">Capital In</div></div>';
+    html += '</div>';
+    html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(76,175,80,.2);display:flex;justify-content:space-between;">';
+    html += '<span style="font-size:12px;color:var(--t2);">Credit Outstanding</span><span style="font-size:14px;font-weight:800;color:#ff9800;">' + fmt(grandCredit) + '</span>';
+    html += '</div>';
+    html += '<div style="margin-top:6px;display:flex;justify-content:space-between;">';
+    html += '<span style="font-size:12px;color:var(--t2);">Gross Profit (In − COGS)</span><span style="font-size:14px;font-weight:800;color:' + (grossProfit >= 0 ? 'var(--ok)' : 'var(--err)') + ';">' + fmt(grossProfit) + '</span>';
+    html += '</div>';
+    html += '</div>';
+
+    // Daily breakdown
+    html += '<div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:12px;">Daily Breakdown</div>';
+
+    dayOrder.slice().reverse().forEach(function(d) {
+      var dm = dayMap[d];
+      running += dm.in - dm.out;
+      var displayDate = new Date(d+'T12:00:00').toLocaleDateString('en-KE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+      var dayNet = dm.in - dm.out;
+
+      html += '<div style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:14px;margin-bottom:10px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+      html += '<div style="font-weight:700;font-size:14px;">&#128197; ' + displayDate + '</div>';
+      html += '<div style="text-align:right;"><div style="font-size:16px;font-weight:800;color:' + (dayNet >= 0 ? '#4caf50' : 'var(--err)') + ';">' + (dayNet >= 0 ? '+' : '') + fmt(dayNet) + '</div>';
+      html += '<div style="font-size:10px;color:var(--t2);">run: ' + fmt(running) + '</div></div>';
+      html += '</div>';
+
+      // Mini bar chart
+      var maxVal = Math.max(dm.in, dm.out, 1);
+      var inPct = Math.round((dm.in / maxVal) * 100);
+      var outPct = Math.round((dm.out / maxVal) * 100);
+      html += '<div style="display:flex;gap:4px;margin-bottom:10px;height:6px;">';
+      if (dm.in > 0) html += '<div style="flex:' + inPct + ';background:#4caf50;border-radius:3px;"></div>';
+      if (dm.out > 0) html += '<div style="flex:' + outPct + ';background:var(--err);border-radius:3px;"></div>';
+      if (dm.in === 0 && dm.out === 0) html += '<div style="flex:1;background:var(--b);border-radius:3px;"></div>';
+      html += '</div>';
+
+      html += '<div style="display:flex;gap:12px;font-size:12px;margin-bottom:8px;">';
+      html += '<span style="color:#4caf50;font-weight:600;">In: ' + fmt(dm.in) + '</span>';
+      html += '<span style="color:var(--err);font-weight:600;">Out: ' + fmt(dm.out) + '</span>';
+      if (dm.credit > 0) html += '<span style="color:#ff9800;font-weight:600;">Credit: ' + fmt(dm.credit) + '</span>';
+      html += '</div>';
+
+      // Details
+      if (dm.details.length > 0) {
+        html += '<div style="background:var(--s3);border-radius:var(--rs);padding:10px 12px;margin-top:8px;">';
+        dm.details.forEach(function(det) {
+          if (det.type === 'sale') {
+            html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--b3);">';
+            html += '<span>&#128717; ' + escHtml(det.desc) + ' <span style="color:var(--t2);">(' + det.method + ')</span></span>';
+            html += '<span style="color:#4caf50;font-weight:600;">+' + fmt(det.amount) + '</span>';
+            html += '</div>';
+          } else if (det.type === 'expense') {
+            html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--b3);">';
+            html += '<span>&#128184; ' + escHtml(det.desc) + ' <span style="color:var(--t2);">(' + (det.category || 'Expense') + ')</span></span>';
+            html += '<span style="color:var(--err);font-weight:600;">-' + fmt(det.amount) + '</span>';
+            html += '</div>';
+          } else if (det.type === 'capital') {
+            html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--b3);">';
+            html += '<span>&#128176; ' + escHtml(det.desc) + ' <span style="color:var(--t2);">(Capital)</span></span>';
+            html += '<span style="color:var(--info);font-weight:600;">+' + fmt(det.amount) + '</span>';
+            html += '</div>';
+          } else if (det.type === 'transfer') {
+            html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--b3);">';
+            html += '<span>&#8646; ' + escHtml(det.desc) + '</span>';
+            html += '<span style="color:var(--t2);font-weight:600;">' + fmt(det.amount) + '</span>';
+            html += '</div>';
+          }
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+
+    html += '</div>';
+    el.innerHTML = html;
+
+    // Store for sharing
+    window._cashFlowData = {
+      range: range,
+      dayOrder: dayOrder,
+      dayMap: dayMap,
+      summary: {in: grandTotalIn, out: grandTotalOut, net: netFlow, sales: grandSales, expenses: grandExpenses, capital: grandCapital, credit: grandCredit, cogs: grandCogs}
+    };
+  }).catch(function(e) {
+    el.innerHTML = '<div class="empty">Error: ' + (e && e.message ? e.message : String(e || 'Unknown')) + '</div>';
+  });
+}
+
+function shareCashFlowReport() {
+  var d = window._cashFlowData;
+  if (!d) { toast('Open report first', 'err'); return; }
+
+  var rangeLabel = d.range.from === d.range.to ? d.range.from : d.range.from + ' to ' + d.range.to;
+  var msg = '💰 *LIZ LUXE — Cash Flow Report*\n';
+  msg += '📅 ' + rangeLabel + '\n\n';
+  msg += '📈 *SUMMARY*\n';
+  msg += '▶ Money In: ' + fmt(d.summary.in) + '\n';
+  msg += '◀ Money Out: ' + fmt(d.summary.out) + '\n';
+  msg += '🔴 Net Flow: ' + (d.summary.net >= 0 ? '+' : '') + fmt(d.summary.net) + '\n';
+  msg += '🛍 Sales: ' + d.summary.sales + ' transactions\n';
+  msg += '💸 Expenses: ' + fmt(d.summary.expenses) + '\n';
+  msg += '💰 Capital In: ' + fmt(d.summary.capital) + '\n';
+  msg += '💳 Credit Outstanding: ' + fmt(d.summary.credit) + '\n\n';
+
+  msg += '*DAILY BREAKDOWN*\n';
+  var running = 0;
+  d.dayOrder.forEach(function(date) {
+    var dm = d.dayMap[date];
+    running += dm.in - dm.out;
+    var dayNet = dm.in - dm.out;
+    var dayStr = new Date(date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short'});
+    msg += dayStr + ': ' + (dayNet >= 0 ? '+' : '') + fmt(dayNet) + ' (run: ' + fmt(running) + ')\n';
+  });
+
+  msg += '\n✨ _Liz Luxe POS_';
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
 function showRecycleBin() {
   document.getElementById('recycle-modal').classList.add('on');
   var el = document.getElementById('recycle-body');
@@ -3059,8 +3604,19 @@ function completeSale() {
   if (!cart.length) { toast('Add at least one item', 'err'); return; }
   var cust = document.getElementById('sale-cust').value.trim() || 'Walk-in';
   var date = document.getElementById('sale-date').value || new Date().toISOString().slice(0, 10);
-  var total = Math.max(0, cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0) - discountAmt);
+  var subtotal = cart.reduce(function(s, c) { return s + c.sp * c.qty; }, 0);
+  var total = Math.max(0, subtotal - discountAmt);
+
+  // Calculate profit for this sale
+  var saleProfit = cart.reduce(function(s, c) { 
+    return s + ((c.sp - c.bp) * c.qty); 
+  }, 0);
+  // Adjust profit for discount (reduce profit by discount amount)
+  saleProfit = Math.max(0, saleProfit - discountAmt);
+
   var paid, method, splitDetails = null;
+  var profitSweepFrom = null; // Track which wallet(s) to sweep profit from
+
   if (splitMode) {
     var cash = parseFloat(document.getElementById('sp-cash').value) || 0;
     var mpesa = parseFloat(document.getElementById('sp-mpesa').value) || 0;
@@ -3074,13 +3630,19 @@ function completeSale() {
     if (card > 0) parts.push('Card ' + fmt(card));
     method = 'Split';
     splitDetails = parts.join(' + ');
+    // For split, we'll sweep from the largest payment source
+    if (cash >= mpesa && cash >= card) profitSweepFrom = 'Cash';
+    else if (mpesa >= card) profitSweepFrom = 'M-Pesa';
+    else profitSweepFrom = 'Card';
   } else if (payMethod === 'Credit') {
     paid = 0; method = 'Credit';
+    // No profit sweep on credit — will sweep when debt is paid
   } else {
     paid = parseFloat(document.getElementById('sale-paid').value);
     if (isNaN(paid)) { toast('Enter amount paid', 'err'); return; }
     paid = Math.min(paid, total);
     method = payMethod;
+    profitSweepFrom = payMethod;
   }
 
   var balance = total - paid;
@@ -3088,7 +3650,19 @@ function completeSale() {
   var items = cart.map(function(c) { return {id: c.id, name: c.name, qty: c.qty, selling_price: c.sp, buying_price: c.bp}; });
   lastReceiptRef = genRef();
   var phone = document.getElementById('sale-phone').value.trim();
-var saleData = {customer_name: cust, items: items, total: total, paid: paid, balance: balance, method: method, date: date, receipt_ref: lastReceiptRef, discount_amount: discountAmt || 0, customer_phone: phone || null};
+  var saleData = {
+    customer_name: cust, 
+    items: items, 
+    total: total, 
+    paid: paid, 
+    balance: balance, 
+    method: method, 
+    date: date, 
+    receipt_ref: lastReceiptRef, 
+    discount_amount: discountAmt || 0, 
+    customer_phone: phone || null,
+    profit: saleProfit  // Store profit on the sale record
+  };
   if (splitDetails) saleData.split_details = splitDetails;
 
   dbPost('sales', saleData)
@@ -3100,6 +3674,12 @@ var saleData = {customer_name: cust, items: items, total: total, paid: paid, bal
         return dbPatch('inventory', {remaining: nr}, '?id=eq.' + c.id).then(function() { it.remaining = nr; });
       });
       return Promise.all(ps);
+    })
+    .then(function() {
+      // Auto-sweep profit to Profit wallet for cash/M-Pesa/Bank sales
+      if (profitSweepFrom && saleProfit > 0 && paid > 0) {
+        return recordProfitSweep(profitSweepFrom, saleProfit, date, lastReceiptRef, cust);
+      }
     })
     .then(function() {
       showReceipt(cust, date, items, total, paid, balance, method, splitDetails);
@@ -3272,6 +3852,8 @@ function filterCustomers() {
   var q = (document.getElementById('cust-search').value || '').toLowerCase();
   var map = {};
   allCustomerSales.forEach(function(s) {
+    // Skip returned sales from customer debt totals
+    if ((s.method || '').indexOf('Returned') >= 0) return;
     var n = s.customer_name || 'Walk-in';
     if (!map[n]) map[n] = {sales: [], totalSpent: 0, balance: 0, lastDate: ''};
     map[n].sales.push(s);
@@ -3286,6 +3868,7 @@ function filterCustomers() {
     if (custFilterMode === 'debt') matchF = map[n].balance > 0;
     else if (custFilterMode === 'overdue') {
       matchF = map[n].sales.some(function(s) {
+        if ((s.method || '').indexOf('Returned') >= 0) return false;
         if ((s.balance || 0) <= 0) return false;
         var d = new Date(s.date); d.setDate(d.getDate() + 14);
         return d.toISOString().slice(0, 10) < today;
@@ -3504,6 +4087,7 @@ function cdRecordPayment() {
   var prevBalance = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
   dbGet('sales', '?id=in.(' + ids.join(',') + ')&order=date.asc').then(function(sales) {
     var rem = amt, ps = [];
+    var totalProfitSwept = 0;
     sales.forEach(function(s) {
       if (rem <= 0 || (s.balance || 0) <= 0) return;
       var pay = Math.min(rem, s.balance);
@@ -3512,9 +4096,26 @@ function cdRecordPayment() {
       var log = s.payment_log || [];
       log.push({amount: pay, method: method, date: today});
       ps.push(dbPatch('sales', {paid: newPaid, balance: newBal, payment_log: log}, '?id=eq.' + s.id));
+      // Calculate profit portion of this payment and sweep it
+      var saleTotal = s.total || 0;
+      var saleProfit = s.profit || 0;
+      if (saleTotal > 0 && saleProfit > 0) {
+        var profitPortion = Math.round((pay / saleTotal) * saleProfit * 100) / 100;
+        totalProfitSwept += profitPortion;
+      }
       rem -= pay;
     });
-    return Promise.all(ps);
+    return Promise.all(ps).then(function() {
+      return totalProfitSwept;
+    });
+  }).then(function(profitSwept) {
+    // Sweep profit portion to Profit wallet
+    if (profitSwept > 0) {
+      return recordProfitSweep(method, profitSwept, today, 'debt-payment-' + custName, custName).then(function() {
+        return profitSwept;
+      });
+    }
+    return profitSwept;
   }).then(function() {
     var newBalance = Math.max(0, prevBalance - amt);
     allCustomerSales = [];
@@ -3732,7 +4333,11 @@ function renderFin() {
   // Build server-side date filter for selected period
   var salesQuery = '?select=total,paid,items,balance,date,method,payment_log,split_details';
   var dedQuery = '?order=created_at.desc';
-  if (finDateFilter === 'today') {
+  if (finDateFilter === 'all') {
+    // Fetch everything from 2000-01-01 to today
+    salesQuery += '&date=gte.2000-01-01&date=lte.' + today;
+    dedQuery += '&date=gte.2000-01-01&date=lte.' + today;
+  } else if (finDateFilter === 'today') {
     salesQuery += '&date=eq.' + today;
     dedQuery += '&date=eq.' + today;
   } else if (finDateFilter === 'week') {
@@ -3754,7 +4359,13 @@ function renderFin() {
     finDateFilter !== 'today' ? dbGet('sales', '?select=total,paid,items,date&date=eq.' + today + '') : Promise.resolve(null)
   ]).then(function(r) {
       var allSalesData = r[0], deds = r[1];
-      // Daily summary card
+
+      // === FILTER: Exclude Returned sales from all credit calculations ===
+      var activeSales = allSalesData.filter(function(s) {
+        return (s.method || '').indexOf('Returned') < 0;
+      });
+
+      // Daily summary card (today's data)
       var todaySales = r[2] !== null ? r[2] : allSalesData.filter(function(s) { return s.date === today; });
       var dayRev = todaySales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
       var dayCogs = todaySales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
@@ -3762,8 +4373,8 @@ function renderFin() {
       document.getElementById('fd-pro').textContent = fmt(dayRev - dayCogs);
       document.getElementById('fd-cnt').textContent = todaySales.length;
 
-      // Overdue summary
-      var overdueSales = allSalesData.filter(function(s) {
+      // Overdue summary (only from active sales)
+      var overdueSales = activeSales.filter(function(s) {
         if ((s.balance || 0) <= 0) return false;
         var d = new Date(s.date); d.setDate(d.getDate() + 14);
         return d.toISOString().slice(0, 10) < today;
@@ -3785,19 +4396,20 @@ function renderFin() {
       } else {
         overdueCard.style.display = 'none';
       }
-      // All sales already filtered server-side
-      var sales = allSalesData;
+
+      // Use ACTIVE sales (excluding Returned) for all finance calculations
+      var sales = activeSales;
       var rev = sales.reduce(function(s, x) { return s + (x.paid || 0); }, 0);
       var cogs = sales.reduce(function(s, x) { return s + (x.items || []).reduce(function(ss, i) { return ss + (i.buying_price || 0) * i.qty; }, 0); }, 0);
       var totExp = deds.filter(function(d) { return d.type !== 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
       var totInj = deds.filter(function(d) { return d.type === 'injection'; }).reduce(function(s, d) { return s + (d.amount || 0); }, 0);
 
-      // Gross Profit: earned on ALL sales (total - cogs), regardless of payment status
+      // Gross Profit: earned on ALL active sales (total - cogs), regardless of payment status
       var grossTotal = sales.reduce(function(s, x) { return s + (x.total || 0); }, 0);
       var grossProfit = grossTotal - cogs;
       // Cash Profit: only from money actually collected
       var cashProfit = rev - cogs;
-      // Credit exposure: what was sold but not yet paid for
+      // Credit exposure: what was sold but not yet paid for (from active sales only)
       var creditExposure = grossTotal - rev;
       // Data integrity: check if stored balance matches calculated (total - paid)
       var balanceMismatch = sales.reduce(function(s, x) {
@@ -3806,7 +4418,7 @@ function renderFin() {
         return s + (calcBal - storedBal);
       }, 0);
 
-      // Net Balance = Revenue (Collected) − Expenses + Capital Injected
+      // Net Balance = Revenue (Collected) - Expenses + Capital Injected
       var netBalance = rev - totExp + totInj;
 
       document.getElementById('f-rev').textContent = fmt(rev);
@@ -3828,7 +4440,7 @@ function renderFin() {
       fb.style.color = netBalance >= 0 ? 'var(--ok)' : 'var(--err)';
 
       // ── Money breakdown by method + wallet adjustments ──
-      var mbCash = 0, mbMpesa = 0, mbCard = 0, mbCredit = 0, mbSplit = 0, mbBank = 0;
+      var mbCash = 0, mbMpesa = 0, mbCard = 0, mbCredit = 0, mbSplit = 0, mbBank = 0, mbProfit = 0;
       sales.forEach(function(s) {
         var p = s.paid || 0;
         var bal = s.balance || 0;
@@ -3850,7 +4462,7 @@ function renderFin() {
           // If we couldn't parse, fall back to split bucket
           if (!cashM && !mpesaM && !cardM) mbSplit += p;
         }
-        // Count ALL outstanding balances as credit, regardless of original payment method
+        // Count outstanding balances from ACTIVE sales only as credit
         if (bal > 0) mbCredit += bal;
       });
       // Add partial payments from payment_log
@@ -3863,21 +4475,28 @@ function renderFin() {
           else if (pm === 'bank') mbBank += (pl.amount || 0);
         });
       });
-      // Apply wallet transfer adjustments only
+      // Apply wallet transfer adjustments (includes Profit sweeps)
       var adj = getWalletAdjustments();
       mbCash += adj['Cash'] || 0;
       mbMpesa += adj['M-Pesa'] || 0;
       mbBank += adj['Bank'] || 0;
-      // Total Collected = Cash + M-Pesa + Card + Bank + Split (actual money in hand)
-      var mbTotal = mbCash + mbMpesa + mbCard + mbSplit + mbBank;
-      // Total Business Value = Total Collected + Credit Owed + Capital (matching Excel)
-      var totalValue = mbTotal + mbCredit + totInj;
+      mbProfit += adj['Profit'] || 0;
+      // Profit wallet: sum of all profit sweeps (transfers TO Profit)
+      _transfers.forEach(function(t) {
+        if (t.to_wallet === 'Profit') mbProfit += (t.amount || 0);
+        if (t.from_wallet === 'Profit') mbProfit -= (t.amount || 0);
+      });
+      // Total Collected = Cash + M-Pesa + Card + Bank + Split (working capital only)
+      var mbWorking = mbCash + mbMpesa + mbCard + mbSplit + mbBank;
+      // Total Business Value = Working Capital + Credit Owed + Profit
+      var totalValue = mbWorking + mbCredit + mbProfit;
       document.getElementById('mb-cash').textContent = fmt(Math.max(0, mbCash));
       document.getElementById('mb-mpesa').textContent = fmt(Math.max(0, mbMpesa));
       document.getElementById('mb-card').textContent = fmt(Math.max(0, mbCard));
       document.getElementById('mb-credit').textContent = fmt(mbCredit);
       document.getElementById('mb-split').textContent = fmt(Math.max(0, mbSplit));
       document.getElementById('mb-bank').textContent = fmt(Math.max(0, mbBank));
+      document.getElementById('mb-profit').textContent = fmt(Math.max(0, mbProfit));
       document.getElementById('mb-total').textContent = fmt(totalValue);
       // Render transfer log
       renderTransferLog();
@@ -3985,6 +4604,44 @@ function recordTransfer() {
       toast(fmt(amt) + ' moved from ' + from + ' to ' + to, 'ok');
       loadTransfers();
     }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
+}
+
+
+// ── Profit Sweep System ──
+function recordProfitSweep(fromWallet, amount, date, ref, customer) {
+  if (!amount || amount <= 0) return Promise.resolve();
+  return dbPost('transfers', {
+    from_wallet: fromWallet,
+    to_wallet: 'Profit',
+    amount: amount,
+    note: 'Profit from ' + (customer || 'sale') + ' — ' + ref,
+    date: date,
+    type: 'profit_sweep'
+  }).then(function() {
+    toast('💰 Profit ' + fmt(amount) + ' swept to Profit wallet', 'ok');
+    loadTransfers();
+  }).catch(function(e) {
+    console.error('Profit sweep failed:', e);
+    toast('Profit sweep failed: ' + (e && e.message ? e.message : 'Unknown error'), 'err');
+  });
+}
+
+// ── Reverse Profit Sweep (when return happens) ──
+function reverseProfitSweep(amount, date, ref) {
+  if (!amount || amount <= 0) return Promise.resolve();
+  return dbPost('transfers', {
+    from_wallet: 'Profit',
+    to_wallet: 'Cash',
+    amount: amount,
+    note: 'Reversed profit from returned sale — ' + ref,
+    date: date,
+    type: 'profit_reverse'
+  }).then(function() {
+    toast('Profit ' + fmt(amount) + ' returned from Profit wallet', 'ok');
+    loadTransfers();
+  }).catch(function(e) {
+    console.error('Profit reverse failed:', e);
+  });
 }
 
 var _transfers = [];
@@ -4404,6 +5061,28 @@ function backfillReceiptRefs() {
 }
 
 
+function backfillSalesProfit() {
+  // Fetch sales where profit is null or 0 but have items with buying_price
+  dbGet('sales', '?profit=eq.0&order=date.asc').then(function(sales) {
+    if (!sales || !sales.length) return;
+    var toUpdate = sales.filter(function(s) {
+      return s.items && s.items.length && s.items.some(function(it) { return it.buying_price > 0; });
+    });
+    if (!toUpdate.length) return;
+    var ps = toUpdate.map(function(s) {
+      var profit = (s.items || []).reduce(function(sum, it) {
+        return sum + ((it.selling_price - it.buying_price) * (it.qty || 1));
+      }, 0);
+      profit = Math.max(0, profit - (s.discount_amount || 0));
+      profit = Math.round(profit * 100) / 100;
+      return dbPatch('sales', {profit: profit}, '?id=eq.' + s.id);
+    });
+    Promise.all(ps).then(function() {
+      console.log('Backfilled profit on ' + toUpdate.length + ' sales');
+    }).catch(function(e) { console.error('Profit backfill error:', e); });
+  }).catch(function() {});
+}
+
 // ══ EmailJS Setup ══
 // Replace YOUR_PUBLIC_KEY with your actual EmailJS public key from Account → API Keys
 var EMAILJS_PUBLIC_KEY = 'l0LhABXsrkpM2ecB';  // Your EmailJS public key
@@ -4426,8 +5105,9 @@ function initApp() {
   if (document.getElementById('lock-hint')) {
     document.getElementById('lock-hint').textContent = typeof appPin !== 'undefined' && appPin === '1234' ? 'Default PIN: 1234' : 'Enter your PIN';
   }
-  // Backfill missing receipt refs for old sales
+  // Backfill missing receipt refs and profit for old sales
   backfillReceiptRefs();
+  backfillSalesProfit();
 }
 
 // ── Startup: check for saved session ──
@@ -4721,30 +5401,7 @@ function submitQuickSale() {
 }
 
 // Backfill missing receipt_ref for old sales
-function backfillReceiptRefs() {
-  dbGet('sales', '?receipt_ref=is.null&order=date.asc').then(function(sales) {
-    if (!sales.length) return;
-    console.log('Backfilling ' + sales.length + ' sales with missing receipt refs...');
-    var ps = [];
-    var dateCounters = {};
-    sales.forEach(function(s) {
-      var dateStr = s.date.replace(/-/g, '');
-      if (!dateCounters[dateStr]) dateCounters[dateStr] = 0;
-      dateCounters[dateStr]++;
-      var ref = 'LX-' + dateStr + '-' + String(dateCounters[dateStr]).padStart(3, '0');
-      ps.push(dbPatch('sales', {receipt_ref: ref}, '?id=eq.' + s.id));
-    });
-    Promise.all(ps).then(function() {
-      console.log('Backfilled ' + sales.length + ' sales with receipt refs');
-      toast('Assigned receipt codes to ' + sales.length + ' old sales', 'ok');
-    }).catch(function(e) {
-      console.error('Backfill error:', e);
-    });
-  }).catch(function() {});
-}
 
-
-// WhatsApp Debt Reminder
 function sendDebtReminderFromReport(name, balance, phone) {
   var msg = 'Hi ' + name + ', this is Liz Luxe.\n\n';
   msg += 'Your outstanding balance is *' + fmt(balance) + '*.\n\n';
@@ -4806,7 +5463,8 @@ function performBackup() {
     dbGet('deductions', '?order=date.desc&limit=500'),
     dbGet('inventory', '?order=name.asc'),
     dbGet('transfers', '?order=id.desc&limit=200'),
-    dbGet('returns', '?order=date.desc&limit=200')
+    dbGet('returns', '?order=date.desc&limit=200'),
+    dbGet('deleted_records', '?order=deleted_at.desc&limit=200')
   ]).then(function(r) {
     var backup = {
       date: today,
@@ -5113,6 +5771,636 @@ function executeRestore() {
   });
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// ══ ITEM SALES REPORT FUNCTIONS ══
+// ═══════════════════════════════════════════════════════════════
+
+var _itemSalesData = null;
+var _itemSalesFilter = {cat:'all', search:''};
+
+function showItemSalesReport() {
+  document.getElementById('items-report-modal').classList.add('on');
+
+  // Populate month selector
+  var sel = document.getElementById('isr-month-sel');
+  if (sel.options.length <= 1) {
+    var now = new Date();
+    for (var i = 0; i < 24; i++) {
+      var d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      var val = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0');
+      var label = d2.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+      var opt = document.createElement('option');
+      opt.value = val; opt.textContent = label;
+      if (i === 0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  // Default to current month
+  var now = new Date();
+  var curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  document.getElementById('isr-from').value = curMonth + '-01';
+  document.getElementById('isr-to').value = now.toISOString().slice(0,10);
+
+  loadItemSalesData();
+}
+
+function getItemReportRange() {
+  var from = document.getElementById('isr-from').value;
+  var to = document.getElementById('isr-to').value;
+  if (from && to) return {from: from, to: to};
+  if (from && !to) return {from: from, to: new Date().toISOString().slice(0, 10)};
+  if (!from && to) return {from: '2000-01-01', to: to};
+  var sel = document.getElementById('isr-month-sel');
+  var month = sel ? sel.value : '';
+  if (month) {
+    var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+    return {from: month + '-01', to: month + '-' + String(last.getDate()).padStart(2, '0')};
+  }
+  return {from: '2000-01-01', to: new Date().toISOString().slice(0, 10)};
+}
+
+function onItemReportMonthChange() {
+  document.getElementById('isr-from').value = '';
+  document.getElementById('isr-to').value = '';
+  loadItemSalesData();
+}
+
+function onItemReportDateChange() {
+  document.getElementById('isr-month-sel').value = '';
+  loadItemSalesData();
+}
+
+function clearItemReportFilter() {
+  document.getElementById('isr-from').value = '';
+  document.getElementById('isr-to').value = '';
+  document.getElementById('isr-month-sel').value = '';
+  document.getElementById('isr-search').value = '';
+  _itemSalesFilter = {cat:'all', search:''};
+  loadItemSalesData();
+}
+
+function loadItemSalesData() {
+  var el = document.getElementById('items-report-body');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  var range = getItemReportRange();
+
+  // Fetch sales in date range + inventory for categories
+  Promise.all([
+    dbGet('sales', '?date=gte.'+range.from+'&date=lte.'+range.to+'&order=date.desc'),
+    dbGet('inventory', '?select=id,name,category')
+  ]).then(function(r) {
+    var sales = r[0];
+    var invMap = {};
+    r[1].forEach(function(i) { invMap[i.id] = i; });
+
+    // Build item-level rows
+    var rows = [];
+    var cats = {};
+
+    sales.forEach(function(s) {
+      if ((s.method||'').indexOf('Returned') >= 0) return; // Skip returns
+
+      (s.items || []).forEach(function(item) {
+        var invItem = invMap[item.id] || {};
+        var cat = invItem.category || 'Other';
+        cats[cat] = 1;
+
+        var buyPrice = item.buying_price || 0;
+        var sellPrice = item.selling_price || 0;
+        var qty = item.qty || 0;
+        var totalCost = buyPrice * qty;
+        var totalRev = sellPrice * qty;
+        var profit = totalRev - totalCost;
+        var margin = totalRev > 0 ? Math.round((profit / totalRev) * 100) : 0;
+
+        rows.push({
+          date: s.date,
+          receiptRef: s.receipt_ref || '',
+          customer: s.customer_name || 'Walk-in',
+          itemName: item.name || 'Unknown',
+          category: cat,
+          qty: qty,
+          buyPrice: buyPrice,
+          sellPrice: sellPrice,
+          totalCost: totalCost,
+          totalRev: totalRev,
+          profit: profit,
+          margin: margin,
+          method: s.method || 'Cash',
+          paid: s.paid || 0,
+          balance: s.balance || 0,
+          saleTotal: s.total || 0
+        });
+      });
+    });
+
+    _itemSalesData = {rows: rows, cats: Object.keys(cats).sort()};
+
+    // Build category pills
+    var pillsHtml = '<button class="dpill active" onclick="filterItemSalesByCat(this,\'all\')">All</button>';
+    _itemSalesData.cats.forEach(function(c) {
+      pillsHtml += '<button class="dpill" onclick="filterItemSalesByCat(this,\'' + c + '\')">' + c + '</button>';
+    });
+    document.getElementById('isr-cat-pills').innerHTML = pillsHtml;
+
+    renderItemSalesTable();
+  }).catch(function(e) {
+    el.innerHTML = '<div class="empty">Error: ' + (e && e.message ? e.message : String(e || 'Unknown')) + '</div>';
+  });
+}
+
+function filterItemSalesByCat(btn, cat) {
+  document.querySelectorAll('#isr-cat-pills .dpill').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  _itemSalesFilter.cat = cat;
+  renderItemSalesTable();
+}
+
+function filterItemSalesReport() {
+  _itemSalesFilter.search = (document.getElementById('isr-search').value || '').toLowerCase();
+  renderItemSalesTable();
+}
+
+function renderItemSalesTable() {
+  if (!_itemSalesData) return;
+
+  var rows = _itemSalesData.rows.filter(function(r) {
+    var matchCat = _itemSalesFilter.cat === 'all' || r.category === _itemSalesFilter.cat;
+    var q = _itemSalesFilter.search;
+    var matchSearch = !q || 
+      r.itemName.toLowerCase().indexOf(q) >= 0 ||
+      r.customer.toLowerCase().indexOf(q) >= 0 ||
+      r.receiptRef.toLowerCase().indexOf(q) >= 0;
+    return matchCat && matchSearch;
+  });
+
+  // Update summary
+  var totalItems = rows.reduce(function(s,r){return s+r.qty;},0);
+  var totalRev = rows.reduce(function(s,r){return s+r.totalRev;},0);
+  var totalProfit = rows.reduce(function(s,r){return s+r.profit;},0);
+  var avgMargin = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
+
+  document.getElementById('isr-total-items').textContent = totalItems.toLocaleString();
+  document.getElementById('isr-total-rev').textContent = fmt(totalRev);
+  document.getElementById('isr-total-profit').textContent = fmt(totalProfit);
+  document.getElementById('isr-avg-margin').textContent = avgMargin + '%';
+  document.getElementById('isr-avg-margin').style.color = avgMargin >= 30 ? 'var(--ok)' : avgMargin >= 15 ? 'var(--gold)' : 'var(--err)';
+
+  // Update subtitle
+  var range = getItemReportRange();
+  var sub = rows.length + ' line items';
+  if (range.from !== '2000-01-01') sub += ' · ' + range.from + ' to ' + range.to;
+  document.getElementById('items-report-subtitle').textContent = sub;
+
+  // Render table
+  var el = document.getElementById('items-report-body');
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty">No items found for this period</div>';
+    return;
+  }
+
+  var html = '';
+  rows.forEach(function(r) {
+    var profitColor = r.profit >= 0 ? 'var(--ok)' : 'var(--err)';
+    var marginColor = r.margin >= 30 ? 'var(--ok)' : r.margin >= 15 ? 'var(--gold)' : 'var(--err)';
+    var dateStr = r.date ? new Date(r.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short'}) : '';
+
+    html += '<div style="display:grid;grid-template-columns:70px 1fr 80px 80px 80px 80px 80px 70px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--b3);font-size:12px;">';
+    html += '<div style="color:var(--t2);font-size:11px;">' + dateStr + '</div>';
+    html += '<div><div style="font-weight:600;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHtml(r.itemName) + '</div>';
+    html += '<div style="font-size:11px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHtml(r.customer) + ' · ' + r.receiptRef + '</div></div>';
+    html += '<div style="text-align:right;font-weight:700;">' + r.qty + '</div>';
+    html += '<div style="text-align:right;color:var(--t2);">' + fmt(r.buyPrice) + '</div>';
+    html += '<div style="text-align:right;color:var(--gold);font-weight:600;">' + fmt(r.sellPrice) + '</div>';
+    html += '<div style="text-align:right;font-weight:700;color:' + profitColor + ';">' + fmt(r.profit) + '</div>';
+    html += '<div style="text-align:right;font-weight:700;color:' + marginColor + ';">' + r.margin + '%</div>';
+    html += '<div style="text-align:center;"><span class="chip" style="font-size:10px;padding:2px 6px;">' + r.method + '</span></div>';
+    html += '</div>';
+  });
+
+  el.innerHTML = html;
+}
+
+function exportItemSalesExcel() {
+  if (!_itemSalesData || !_itemSalesData.rows.length) { toast('No data to export', 'err'); return; }
+  toast('Preparing export...', 'ok');
+
+  var rows = _itemSalesData.rows;
+  if (_itemSalesFilter.cat !== 'all' || _itemSalesFilter.search) {
+    rows = rows.filter(function(r) {
+      var matchCat = _itemSalesFilter.cat === 'all' || r.category === _itemSalesFilter.cat;
+      var q = _itemSalesFilter.search;
+      var matchSearch = !q || r.itemName.toLowerCase().indexOf(q) >= 0 || r.customer.toLowerCase().indexOf(q) >= 0;
+      return matchCat && matchSearch;
+    });
+  }
+
+  // Sheet 1: Item Sales Detail
+  var s1 = [
+    ['LIZ LUXE — ITEM SALES REPORT'],
+    [],
+    ['Date','Receipt Ref','Customer','Item','Category','Qty','Buy Price (unit)','Sell Price (unit)','Total Cost','Total Revenue','Profit','Margin %','Payment Method','Sale Paid','Balance']
+  ];
+  rows.forEach(function(r) {
+    s1.push([
+      r.date, r.receiptRef, r.customer, r.itemName, r.category,
+      r.qty, r.buyPrice, r.sellPrice, r.totalCost, r.totalRev,
+      r.profit, r.margin + '%', r.method, r.paid, r.balance
+    ]);
+  });
+
+  // Totals row
+  var totalQty = rows.reduce(function(s,r){return s+r.qty;},0);
+  var totalCost = rows.reduce(function(s,r){return s+r.totalCost;},0);
+  var totalRev = rows.reduce(function(s,r){return s+r.totalRev;},0);
+  var totalProfit = rows.reduce(function(s,r){return s+r.profit;},0);
+  s1.push([]);
+  s1.push(['TOTALS','','','','',totalQty,'','',totalCost,totalRev,totalProfit,'','','','']);
+
+  // Sheet 2: Summary by Item
+  var itemMap = {};
+  rows.forEach(function(r) {
+    if (!itemMap[r.itemName]) itemMap[r.itemName] = {qty:0,rev:0,cost:0,profit:0};
+    itemMap[r.itemName].qty += r.qty;
+    itemMap[r.itemName].rev += r.totalRev;
+    itemMap[r.itemName].cost += r.totalCost;
+    itemMap[r.itemName].profit += r.profit;
+  });
+  var s2 = [
+    ['LIZ LUXE — SUMMARY BY ITEM'],
+    [],
+    ['Item','Category','Total Qty Sold','Total Revenue','Total Cost','Gross Profit','Margin %']
+  ];
+  Object.keys(itemMap).sort().forEach(function(name) {
+    var d = itemMap[name];
+    var margin = d.rev > 0 ? Math.round((d.profit / d.rev) * 100) : 0;
+    s2.push([name, rows.find(function(r){return r.itemName===name;}).category, d.qty, d.rev, d.cost, d.profit, margin + '%']);
+  });
+
+  // Sheet 3: Summary by Customer
+  var custMap = {};
+  rows.forEach(function(r) {
+    if (!custMap[r.customer]) custMap[r.customer] = {qty:0,rev:0,profit:0};
+    custMap[r.customer].qty += r.qty;
+    custMap[r.customer].rev += r.totalRev;
+    custMap[r.customer].profit += r.profit;
+  });
+  var s3 = [
+    ['LIZ LUXE — SUMMARY BY CUSTOMER'],
+    [],
+    ['Customer','Items Bought','Total Revenue','Gross Profit','Margin %']
+  ];
+  Object.keys(custMap).sort(function(a,b){return custMap[b].rev-custMap[a].rev;}).forEach(function(name) {
+    var d = custMap[name];
+    var margin = d.rev > 0 ? Math.round((d.profit / d.rev) * 100) : 0;
+    s3.push([name, d.qty, d.rev, d.profit, margin + '%']);
+  });
+
+  // Build workbook
+  function buildWorkbook(sheets) {
+    function escXml(v) {
+      if (v === null || v === undefined) return '';
+      return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>';
+    xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+    xml += '<Styles>';
+    xml += '<Style ss:ID="H"><Font ss:Bold="1" ss:Size="13" ss:Color="#C9972A"/></Style>';
+    xml += '<Style ss:ID="B"><Font ss:Bold="1"/></Style>';
+    xml += '<Style ss:ID="T"><Font ss:Bold="1" ss:Size="11"/></Style>';
+    xml += '</Styles>';
+    sheets.forEach(function(s) {
+      xml += '<Worksheet ss:Name="' + escXml(s.name) + '"><Table>';
+      s.rows.forEach(function(row, ri) {
+        if (!row || !row.length) { xml += '<Row></Row>'; return; }
+        xml += '<Row>';
+        row.forEach(function(cell) {
+          var styleId = '';
+          if (ri === 0) styleId = ' ss:StyleID="H"';
+          else if (ri === 2) styleId = ' ss:StyleID="T"';
+          var val = (cell === null || cell === undefined) ? '' : cell;
+          var type = (typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)) && val.trim() !== '' && val.indexOf('%') === -1)) ? 'Number' : 'String';
+          if (type === 'Number' && val === '') type = 'String';
+          xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(val) + '</Data></Cell>';
+        });
+        xml += '</Row>';
+      });
+      xml += '</Table></Worksheet>';
+    });
+    xml += '</Workbook>';
+    return xml;
+  }
+
+  var workbook = buildWorkbook([
+    {name: '📦 Item Sales', rows: s1},
+    {name: '📊 By Item', rows: s2},
+    {name: '👥 By Customer', rows: s3}
+  ]);
+
+  var blob = new Blob([workbook], {type: 'application/vnd.ms-excel;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  var range = getItemReportRange();
+  var fileName = 'LizLuxe-ItemSales-' + range.from + '_to_' + range.to + '.xls';
+  a.download = fileName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported ' + rows.length + ' items ✓', 'ok');
+}
+
+function shareItemSalesWhatsApp() {
+  if (!_itemSalesData) { toast('No data to share', 'err'); return; }
+  var rows = _itemSalesData.rows;
+  if (_itemSalesFilter.cat !== 'all' || _itemSalesFilter.search) {
+    rows = rows.filter(function(r) {
+      var matchCat = _itemSalesFilter.cat === 'all' || r.category === _itemSalesFilter.cat;
+      var q = _itemSalesFilter.search;
+      var matchSearch = !q || r.itemName.toLowerCase().indexOf(q) >= 0 || r.customer.toLowerCase().indexOf(q) >= 0;
+      return matchCat && matchSearch;
+    });
+  }
+  var range = getItemReportRange();
+  var totalRev = rows.reduce(function(s,r){return s+r.totalRev;},0);
+  var totalProfit = rows.reduce(function(s,r){return s+r.profit;},0);
+  var totalQty = rows.reduce(function(s,r){return s+r.qty;},0);
+  var margin = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
+  var itemProfits = {};
+  rows.forEach(function(r) {
+    if (!itemProfits[r.itemName]) itemProfits[r.itemName] = 0;
+    itemProfits[r.itemName] += r.profit;
+  });
+  var topItems = Object.keys(itemProfits).sort(function(a,b){return itemProfits[b]-itemProfits[a];}).slice(0,5);
+  var msg = '📦 *LIZ LUXE — Item Sales Report*\n';
+  msg += '📅 ' + range.from + ' to ' + range.to + '\n\n';
+  msg += '📊 *SUMMARY*\n';
+  msg += '• Items Sold: ' + totalQty + '\n';
+  msg += '• Revenue: ' + fmt(totalRev) + '\n';
+  msg += '• Gross Profit: ' + fmt(totalProfit) + '\n';
+  msg += '• Margin: ' + margin + '%\n\n';
+  msg += '🏆 *Top Items by Profit*\n';
+  topItems.forEach(function(name, i) {
+    msg += (i+1) + '. ' + name + ': ' + fmt(itemProfits[name]) + '\n';
+  });
+  msg += '\n✨ _Liz Luxe POS_';
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+// ═══════════════════════════════════════════════════════════════
+
+
+// ═══════════════════════════════════════════════════════════════
+// ══ PROFIT SWEEP LEDGER FUNCTIONS ══
+// ═══════════════════════════════════════════════════════════════
+
+var _profitLedgerData = null;
+
+function showProfitSweepLedger() {
+  document.getElementById('profit-ledger-modal').classList.add('on');
+
+  // Populate month selector
+  var sel = document.getElementById('pl-month-sel');
+  if (sel.options.length <= 1) {
+    var now = new Date();
+    for (var i = 0; i < 24; i++) {
+      var d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      var val = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0');
+      var label = d2.toLocaleDateString('en-KE',{month:'long',year:'numeric'});
+      var opt = document.createElement('option');
+      opt.value = val; opt.textContent = label;
+      if (i === 0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  // Default to current month
+  var now = new Date();
+  var curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  document.getElementById('pl-from').value = curMonth + '-01';
+  document.getElementById('pl-to').value = now.toISOString().slice(0,10);
+
+  loadProfitLedgerData();
+}
+
+function getProfitLedgerRange() {
+  var from = document.getElementById('pl-from').value;
+  var to = document.getElementById('pl-to').value;
+  if (from && to) return {from: from, to: to};
+  if (from && !to) return {from: from, to: new Date().toISOString().slice(0, 10)};
+  if (!from && to) return {from: '2000-01-01', to: to};
+  var sel = document.getElementById('pl-month-sel');
+  var month = sel ? sel.value : '';
+  if (month) {
+    var last = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0);
+    return {from: month + '-01', to: month + '-' + String(last.getDate()).padStart(2, '0')};
+  }
+  return {from: '2000-01-01', to: new Date().toISOString().slice(0, 10)};
+}
+
+function onProfitLedgerMonthChange() {
+  document.getElementById('pl-from').value = '';
+  document.getElementById('pl-to').value = '';
+  loadProfitLedgerData();
+}
+
+function onProfitLedgerDateChange() {
+  document.getElementById('pl-month-sel').value = '';
+  loadProfitLedgerData();
+}
+
+function clearProfitLedgerFilter() {
+  document.getElementById('pl-from').value = '';
+  document.getElementById('pl-to').value = '';
+  document.getElementById('pl-month-sel').value = '';
+  loadProfitLedgerData();
+}
+
+function loadProfitLedgerData() {
+  var el = document.getElementById('profit-ledger-body');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  var range = getProfitLedgerRange();
+
+  // Fetch transfers (profit sweeps) and sales with profit data
+  Promise.all([
+    dbGet('transfers', '?date=gte.'+range.from+'&date=lte.'+range.to+'&order=date.desc'),
+    dbGet('sales', '?date=gte.'+range.from+'&date=lte.'+range.to+'&order=date.desc')
+  ]).then(function(r) {
+    var transfers = r[0] || [];
+    var sales = r[1] || [];
+
+    // Build ledger entries from transfers
+    var entries = [];
+
+    // Profit sweeps (transfers TO Profit)
+    transfers.forEach(function(t) {
+      if (t.to_wallet === 'Profit') {
+        entries.push({
+          date: t.date,
+          description: t.note || 'Profit sweep',
+          amount: t.amount || 0,
+          type: 'sweep',
+          wallet: t.from_wallet || 'Unknown',
+          ref: t.note || ''
+        });
+      }
+      // Profit reversals (transfers FROM Profit)
+      if (t.from_wallet === 'Profit') {
+        entries.push({
+          date: t.date,
+          description: t.note || 'Profit reversal',
+          amount: -(t.amount || 0),
+          type: 'reverse',
+          wallet: t.to_wallet || 'Unknown',
+          ref: t.note || ''
+        });
+      }
+    });
+
+    // Calculate pending profit (from credit sales that haven't been paid)
+    var pendingProfit = 0;
+    sales.forEach(function(s) {
+      if ((s.method || '').indexOf('Returned') >= 0) return;
+      if ((s.balance || 0) > 0 && (s.profit || 0) > 0) {
+        // Profit portion of unpaid amount
+        var unpaidRatio = s.balance / (s.total || 1);
+        pendingProfit += Math.round(s.profit * unpaidRatio * 100) / 100;
+      }
+    });
+
+    // Sort by date desc
+    entries.sort(function(a, b) { return b.date.localeCompare(a.date); });
+
+    // Calculate totals
+    var totalSwept = entries.reduce(function(s, e) { return s + (e.type === 'sweep' ? e.amount : 0); }, 0);
+    var totalReversed = entries.reduce(function(s, e) { return s + (e.type === 'reverse' ? Math.abs(e.amount) : 0); }, 0);
+    var netProfit = totalSwept - totalReversed;
+
+    // Update summary
+    document.getElementById('pl-total-swept').textContent = fmt(totalSwept);
+    document.getElementById('pl-total-reversed').textContent = fmt(totalReversed);
+    document.getElementById('pl-net-profit').textContent = fmt(netProfit);
+    document.getElementById('pl-pending').textContent = fmt(pendingProfit);
+
+    // Update subtitle
+    var sub = entries.length + ' entries';
+    if (range.from !== '2000-01-01') sub += ' · ' + range.from + ' to ' + range.to;
+    document.getElementById('profit-ledger-subtitle').textContent = sub;
+
+    // Render table
+    if (!entries.length) {
+      el.innerHTML = '<div class="empty">No profit movements for this period</div>';
+      return;
+    }
+
+    var html = '';
+    entries.forEach(function(e) {
+      var dateStr = e.date ? new Date(e.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short'}) : '';
+      var isSweep = e.type === 'sweep';
+      var amtColor = isSweep ? 'var(--ok)' : 'var(--err)';
+      var typeLabel = isSweep ? '💰 Sweep' : '↩ Reverse';
+      var typeBg = isSweep ? 'rgba(123,201,80,.15)' : 'rgba(224,96,96,.15)';
+      var typeColor = isSweep ? 'var(--ok)' : 'var(--err)';
+
+      html += '<div style="display:grid;grid-template-columns:80px 1fr 100px 100px 100px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--b3);font-size:12px;">';
+      html += '<div style="color:var(--t2);font-size:11px;">' + dateStr + '</div>';
+      html += '<div><div style="font-weight:600;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHtml(e.description) + '</div></div>';
+      html += '<div style="text-align:right;font-weight:700;color:' + amtColor + ';">' + (isSweep ? '+' : '') + fmt(Math.abs(e.amount)) + '</div>';
+      html += '<div style="text-align:center;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:' + typeBg + ';color:' + typeColor + ';">' + typeLabel + '</span></div>';
+      html += '<div style="text-align:center;color:var(--t2);font-size:11px;">' + e.wallet + '</div>';
+      html += '</div>';
+    });
+
+    el.innerHTML = html;
+
+    // Store for export
+    window._profitLedgerData = {
+      entries: entries,
+      totalSwept: totalSwept,
+      totalReversed: totalReversed,
+      netProfit: netProfit,
+      pendingProfit: pendingProfit,
+      range: range
+    };
+  }).catch(function(e) {
+    el.innerHTML = '<div class="empty">Error: ' + (e && e.message ? e.message : String(e || 'Unknown')) + '</div>';
+  });
+}
+
+function exportProfitLedger() {
+  var d = window._profitLedgerData;
+  if (!d || !d.entries.length) { toast('No data to export', 'err'); return; }
+  toast('Preparing export...', 'ok');
+
+  var rows = [
+    ['LIZ LUXE — PROFIT SWEEP LEDGER'],
+    [],
+    ['Period: ' + d.range.from + ' to ' + d.range.to],
+    ['Total Swept:', d.totalSwept, 'Total Reversed:', d.totalReversed, 'Net Profit:', d.netProfit, 'Pending:', d.pendingProfit],
+    [],
+    ['Date','Description','Amount','Type','Source Wallet']
+  ];
+
+  d.entries.forEach(function(e) {
+    rows.push([
+      e.date,
+      e.description,
+      e.amount,
+      e.type === 'sweep' ? 'Profit Sweep' : 'Profit Reversal',
+      e.wallet
+    ]);
+  });
+
+  // Build Excel XML
+  function buildWorkbook(sheets) {
+    function escXml(v) {
+      if (v === null || v === undefined) return '';
+      return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>';
+    xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
+    xml += '<Styles>';
+    xml += '<Style ss:ID="H"><Font ss:Bold="1" ss:Size="13" ss:Color="#C9972A"/></Style>';
+    xml += '<Style ss:ID="B"><Font ss:Bold="1"/></Style>';
+    xml += '<Style ss:ID="T"><Font ss:Bold="1" ss:Size="11"/></Style>';
+    xml += '</Styles>';
+    sheets.forEach(function(s) {
+      xml += '<Worksheet ss:Name="' + escXml(s.name) + '"><Table>';
+      s.rows.forEach(function(row, ri) {
+        if (!row || !row.length) { xml += '<Row></Row>'; return; }
+        xml += '<Row>';
+        row.forEach(function(cell) {
+          var styleId = '';
+          if (ri === 0) styleId = ' ss:StyleID="H"';
+          else if (ri === 2) styleId = ' ss:StyleID="B"';
+          var val = (cell === null || cell === undefined) ? '' : cell;
+          var type = (typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)) && val.trim() !== '')) ? 'Number' : 'String';
+          if (type === 'Number' && val === '') type = 'String';
+          xml += '<Cell' + styleId + '><Data ss:Type="' + type + '">' + escXml(val) + '</Data></Cell>';
+        });
+        xml += '</Row>';
+      });
+      xml += '</Table></Worksheet>';
+    });
+    xml += '</Workbook>';
+    return xml;
+  }
+
+  var workbook = buildWorkbook([{name: 'Profit Ledger', rows: rows}]);
+  var blob = new Blob([workbook], {type: 'application/vnd.ms-excel;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'LizLuxe-ProfitLedger-' + d.range.from + '_to_' + d.range.to + '.xls';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported ' + d.entries.length + ' entries ✓', 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════
+
 </script>
 
 <!-- ══ RESTORE BACKUP MODAL ══ -->
@@ -5142,6 +6430,114 @@ function executeRestore() {
       </div>
     </div>
     <div id="restore-log" style="margin-top:10px;font-size:12px;color:var(--t2);max-height:200px;overflow-y:auto;"></div>
+  </div>
+</div>
+
+
+<!-- ══ ITEM SALES REPORT MODAL ══ -->
+<div class="edit-items-modal" id="items-report-modal">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button onclick="document.getElementById('items-report-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+      <div>
+        <div style="font-weight:700;font-size:16px;">Item Sales Report</div>
+        <div style="font-size:11px;color:var(--t2);" id="items-report-subtitle">All items sold</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="exportItemSalesExcel()" style="background:var(--gold);border:none;border-radius:var(--rs);padding:8px 12px;font-size:12px;font-weight:700;color:#0a0a0a;cursor:pointer;">&#128229; Excel</button>
+      <button onclick="shareItemSalesWhatsApp()" style="background:none;border:none;color:#25d366;font-size:20px;cursor:pointer;">&#128232;</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--b);flex-wrap:wrap;">
+    <select id="isr-month-sel" onchange="onItemReportMonthChange()" style="flex:1;padding:8px 10px;font-size:12px;background:var(--s3);min-width:120px;">
+      <option value="">&#128197; Pick month...</option>
+    </select>
+    <div style="display:flex;gap:6px;align-items:center;flex:2;">
+      <input type="date" id="isr-from" onchange="onItemReportDateChange()" style="flex:1;padding:8px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);">
+      <span style="color:var(--t2);font-size:12px;">to</span>
+      <input type="date" id="isr-to" onchange="onItemReportDateChange()" style="flex:1;padding:8px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);">
+    </div>
+    <button onclick="clearItemReportFilter()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:8px 10px;font-size:11px;color:var(--t2);cursor:pointer;">All</button>
+  </div>
+  <div style="padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--b);">
+    <input id="isr-search" placeholder="&#128269; Search item or customer..." oninput="filterItemSalesReport()" style="width:100%;padding:9px 12px;font-size:13px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);color:var(--t);">
+  </div>
+  <div style="padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--b);display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;" id="isr-cat-pills">
+    <button class="dpill active" onclick="filterItemSalesByCat(this,&#39;all&#39;)">All</button>
+  </div>
+  <!-- Summary Bar -->
+  <div style="background:linear-gradient(135deg,rgba(201,151,42,.15),rgba(201,151,42,.05));border-bottom:1px solid var(--b2);padding:12px 14px;">
+    <div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">&#128202; Summary</div>
+    <div class="daily-grid">
+      <div class="daily-cell"><div class="daily-val" id="isr-total-items" style="color:var(--gold)">0</div><div class="daily-lbl">Items Sold</div></div>
+      <div class="daily-cell"><div class="daily-val" id="isr-total-rev" style="color:var(--ok)">KES 0</div><div class="daily-lbl">Revenue</div></div>
+      <div class="daily-cell"><div class="daily-val" id="isr-total-profit" style="color:#6aabf0">KES 0</div><div class="daily-lbl">Gross Profit</div></div>
+      <div class="daily-cell"><div class="daily-val" id="isr-avg-margin" style="color:var(--t)">0%</div><div class="daily-lbl">Avg Margin</div></div>
+    </div>
+  </div>
+  <!-- Table Header -->
+  <div style="display:grid;grid-template-columns:70px 1fr 80px 80px 80px 80px 80px 70px;background:var(--s3);border-bottom:1px solid var(--b);padding:10px 14px;font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;z-index:10;">
+    <div>Date</div>
+    <div>Item / Customer</div>
+    <div style="text-align:right">Qty</div>
+    <div style="text-align:right">Buy</div>
+    <div style="text-align:right">Sell</div>
+    <div style="text-align:right">Profit</div>
+    <div style="text-align:right">Margin</div>
+    <div style="text-align:center">Method</div>
+  </div>
+  <div class="edit-items-body" id="items-report-body">
+    <div class="empty">Loading...</div>
+  </div>
+</div>
+
+
+<!-- ══ PROFIT SWEEP LEDGER MODAL ══ -->
+<div class="edit-items-modal" id="profit-ledger-modal">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button onclick="document.getElementById('profit-ledger-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+      <div>
+        <div style="font-weight:700;font-size:16px;">Profit Sweep Ledger</div>
+        <div style="font-size:11px;color:var(--t2);" id="profit-ledger-subtitle">All profit movements</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="exportProfitLedger()" style="background:var(--gold);border:none;border-radius:var(--rs);padding:8px 12px;font-size:12px;font-weight:700;color:#0a0a0a;cursor:pointer;">&#128229; Export</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--b);flex-wrap:wrap;">
+    <select id="pl-month-sel" onchange="onProfitLedgerMonthChange()" style="flex:1;padding:8px 10px;font-size:12px;background:var(--s3);min-width:120px;">
+      <option value="">&#128197; Pick month...</option>
+    </select>
+    <div style="display:flex;gap:6px;align-items:center;flex:2;">
+      <input type="date" id="pl-from" onchange="onProfitLedgerDateChange()" style="flex:1;padding:8px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);">
+      <span style="color:var(--t2);font-size:12px;">to</span>
+      <input type="date" id="pl-to" onchange="onProfitLedgerDateChange()" style="flex:1;padding:8px;font-size:12px;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);">
+    </div>
+    <button onclick="clearProfitLedgerFilter()" style="background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:8px 10px;font-size:11px;color:var(--t2);cursor:pointer;">All</button>
+  </div>
+  <!-- Summary Bar -->
+  <div style="background:linear-gradient(135deg,rgba(201,151,42,.15),rgba(201,151,42,.05));border-bottom:1px solid var(--b2);padding:12px 14px;">
+    <div style="font-size:11px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">&#128176; Profit Summary</div>
+    <div class="daily-grid">
+      <div class="daily-cell"><div class="daily-val" id="pl-total-swept" style="color:var(--gold)">KES 0</div><div class="daily-lbl">Total Swept</div></div>
+      <div class="daily-cell"><div class="daily-val" id="pl-total-reversed" style="color:var(--err)">KES 0</div><div class="daily-lbl">Reversed</div></div>
+      <div class="daily-cell"><div class="daily-val" id="pl-net-profit" style="color:var(--ok)">KES 0</div><div class="daily-lbl">Net Profit</div></div>
+      <div class="daily-cell"><div class="daily-val" id="pl-pending" style="color:#ff9800">KES 0</div><div class="daily-lbl">Pending (Credit)</div></div>
+    </div>
+  </div>
+  <!-- Table Header -->
+  <div style="display:grid;grid-template-columns:80px 1fr 100px 100px 100px;background:var(--s3);border-bottom:1px solid var(--b);padding:10px 14px;font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;z-index:10;">
+    <div>Date</div>
+    <div>Description</div>
+    <div style="text-align:right">Amount</div>
+    <div style="text-align:center">Type</div>
+    <div style="text-align:center">Wallet</div>
+  </div>
+  <div class="edit-items-body" id="profit-ledger-body">
+    <div class="empty">Loading...</div>
   </div>
 </div>
 
