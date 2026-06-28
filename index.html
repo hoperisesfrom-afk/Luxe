@@ -876,16 +876,6 @@ function exportProfitLedger() {
               <div style="font-size:13px;font-weight:700;color:var(--t);">Full Ledger</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">All transactions by day</div>
             </button>
-            <button onclick="exportCSV()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
-              <div style="font-size:28px;margin-bottom:8px;">&#128229;</div>
-              <div style="font-size:13px;font-weight:700;color:var(--t);">Export CSV</div>
-              <div style="font-size:11px;color:var(--t2);margin-top:4px;">All sales as spreadsheet</div>
-            </button>
-            <button onclick="shareWhatsAppSummary()" style="background:var(--s2);border:1px solid rgba(37,211,102,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
-              <div style="font-size:28px;margin-bottom:8px;">&#128232;</div>
-              <div style="font-size:13px;font-weight:700;color:#25d366;">WhatsApp</div>
-              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Activity Report</div>
-            </button>
             <button onclick="showDebtorsReport()" style="background:var(--s2);border:1px solid rgba(244,67,54,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
               <div style="font-size:28px;margin-bottom:8px;">&#128308;</div>
               <div style="font-size:13px;font-weight:700;color:var(--err);">Debtors Report</div>
@@ -895,11 +885,6 @@ function exportProfitLedger() {
               <div style="font-size:28px;margin-bottom:8px;">&#128178;</div>
               <div style="font-size:13px;font-weight:700;color:#4caf50;">Cash Flow Report</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Money in &amp; out by date</div>
-            </button>
-            <button onclick="showRecycleBin()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
-              <div style="font-size:28px;margin-bottom:8px;">&#128465;</div>
-              <div style="font-size:13px;font-weight:700;color:var(--t2);">Recycle Bin</div>
-              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Deleted items &amp; sales</div>
             </button>
             <button onclick="showItemSalesReport()" style="background:var(--s2);border:1px solid rgba(201,151,42,.3);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
               <div style="font-size:28px;margin-bottom:8px;">&#128717;</div>
@@ -911,10 +896,10 @@ function exportProfitLedger() {
               <div style="font-size:13px;font-weight:700;color:var(--gold);">Profit Sweep Ledger</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Track profit moved to Profit wallet</div>
             </button>
-            <button onclick="showRestoreModal()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
-              <div style="font-size:28px;margin-bottom:8px;">&#8617;</div>
-              <div style="font-size:13px;font-weight:700;color:var(--gold);">Restore Backup</div>
-              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Upload JSON backup file</div>
+            <button onclick="showRecycleBin()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+              <div style="font-size:28px;margin-bottom:8px;">&#128465;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--t2);">Recycle Bin</div>
+              <div style="font-size:11px;color:var(--t2);margin-top:4px;">Deleted items &amp; sales</div>
             </button>
             <button onclick="window.open('activity-report.html', '_blank')" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
               <div style="font-size:28px;margin-bottom:8px;">&#128200;</div>
@@ -922,7 +907,18 @@ function exportProfitLedger() {
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Cash flow &amp; running balance</div>
             </button>
           </div>
+          <!-- Utility row -->
+          <div style="margin-top:8px;padding:0 4px;">
+            <button onclick="showRestoreModal()" style="width:100%;background:var(--s1);border:1px solid var(--b);border-radius:var(--rs);padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;">
+              <span style="font-size:20px;">&#8617;</span>
+              <div style="text-align:left;">
+                <div style="font-size:13px;font-weight:700;color:var(--t2);">Restore Backup</div>
+                <div style="font-size:11px;color:var(--t2);margin-top:2px;">Upload JSON backup file</div>
+              </div>
+            </button>
+          </div>
         </div>
+
 
       </div>
     </div>
@@ -4023,26 +4019,66 @@ function renderCustDetail(name) {
   // ── Debt actions ──
   var da = document.getElementById('cd-debt-actions');
   if (balance > 0) {
-    var debtSaleIds = _cdSales.filter(function(s) { return (s.balance || 0) > 0; }).map(function(s) { return s.id; });
+    var debtSales = _cdSales.filter(function(s) { return (s.balance || 0) > 0; });
+    var debtSaleIds = debtSales.map(function(s) { return s.id; });
     _cdPayMethod = 'Cash';
+    _cdSelectedSaleId = null; // reset selection
     da.style.display = 'block';
+
+    var salePickerHtml = '';
+    if (debtSales.length > 1) {
+      salePickerHtml =
+        '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;font-weight:600;">Pay for which sale?</div>' +
+        '<div id="cd-sale-picker" style="margin-bottom:10px;">';
+      debtSales.slice().reverse().forEach(function(s) {
+        var its = (s.items || []).map(function(i) { return i.qty + 'x ' + i.name; }).join(', ');
+        salePickerHtml +=
+          '<div class="cd-sale-pick" data-id="' + s.id + '" onclick="cdPickSale(this,' + s.id + ',' + s.balance + ')" ' +
+          'style="border:1px solid var(--b);border-radius:var(--rs);padding:10px;margin-bottom:6px;cursor:pointer;background:var(--s1);">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+              '<span style="font-size:12px;color:var(--t2);">' + s.date + '</span>' +
+              '<span style="font-weight:700;color:var(--err);">Owes ' + fmt(s.balance) + '</span>' +
+            '</div>' +
+            '<div style="font-size:12px;margin-top:3px;color:var(--t);">' + escHtml(its) + '</div>' +
+          '</div>';
+      });
+      salePickerHtml +=
+          '<div class="cd-sale-pick" data-id="all" onclick="cdPickSale(this,\'all\',' + balance + ')" ' +
+          'style="border:1px solid var(--b);border-radius:var(--rs);padding:10px;margin-bottom:6px;cursor:pointer;background:var(--s1);">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+              '<span style="font-size:12px;font-weight:600;color:var(--gold);">All outstanding sales</span>' +
+              '<span style="font-weight:700;color:var(--err);">Total ' + fmt(balance) + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    }
+
     da.innerHTML =
       '<div style="background:var(--err-bg);border:1px solid rgba(224,96,96,.2);border-radius:var(--rs);padding:14px;">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
           '<div style="font-size:12px;color:var(--err);font-weight:700;">&#9888; Outstanding: ' + fmt(balance) + '</div>' +
           '<button class="btn bsm bok-btn" style="width:auto;padding:6px 12px;" onclick="cdMarkFullyPaid()">&#10003; All Paid</button>' +
         '</div>' +
-        '<div style="font-size:12px;color:var(--t2);margin-bottom:6px;">Record a payment:</div>' +
-        '<input id="cd-pay-amt" type="number" placeholder="Amount (KES)" style="margin-bottom:10px;">' +
-        '<div class="pay-method-grid">' +
-          '<div class="pmt-btn sel" onclick="cdSelMethod(this,\'Cash\')">Cash</div>' +
-          '<div class="pmt-btn" onclick="cdSelMethod(this,\'M-Pesa\')">M-Pesa</div>' +
-          '<div class="pmt-btn" onclick="cdSelMethod(this,\'Card\')">Card</div>' +
+        salePickerHtml +
+        '<div id="cd-payment-form" style="' + (debtSales.length > 1 ? 'display:none;' : '') + '">' +
+          '<div id="cd-paying-for" style="font-size:12px;color:var(--t2);margin-bottom:6px;"></div>' +
+          '<input id="cd-pay-amt" type="number" placeholder="Amount (KES)" style="margin-bottom:10px;">' +
+          '<div class="pay-method-grid">' +
+            '<div class="pmt-btn sel" onclick="cdSelMethod(this,\'Cash\')">Cash</div>' +
+            '<div class="pmt-btn" onclick="cdSelMethod(this,\'M-Pesa\')">M-Pesa</div>' +
+            '<div class="pmt-btn" onclick="cdSelMethod(this,\'Card\')">Card</div>' +
+          '</div>' +
+          '<button class="btn bp bsm" id="cd-pay-btn" onclick="cdRecordPayment()">Record Payment</button>' +
         '</div>' +
-        '<button class="btn bp bsm" id="cd-pay-btn" onclick="cdRecordPayment()">Record Payment</button>' +
       '</div>';
     // store ids for payment
     da._saleIds = debtSaleIds;
+    da._debtSales = debtSales;
+    // If single sale, auto-select it
+    if (debtSales.length === 1) {
+      _cdSelectedSaleId = debtSales[0].id;
+      document.getElementById('cd-paying-for').textContent = 'Recording payment for this sale:';
+    }
   } else {
     da.style.display = 'none';
     da.innerHTML = '';
@@ -4067,6 +4103,27 @@ function renderCustDetail(name) {
   document.getElementById('cust-detail-overlay').classList.add('on');
 }
 
+var _cdSelectedSaleId = null;
+
+function cdPickSale(el, saleId, balance) {
+  // Highlight selected
+  el.closest('#cd-sale-picker').querySelectorAll('.cd-sale-pick').forEach(function(b) {
+    b.style.background = 'var(--s1)';
+    b.style.borderColor = 'var(--b)';
+  });
+  el.style.background = 'var(--gold-bg)';
+  el.style.borderColor = 'var(--gold)';
+  _cdSelectedSaleId = saleId;
+  // Show payment form
+  var form = document.getElementById('cd-payment-form');
+  form.style.display = 'block';
+  var label = document.getElementById('cd-paying-for');
+  label.textContent = saleId === 'all' ? 'Paying across all outstanding sales (oldest first):' : 'Recording payment for selected sale (max ' + fmt(balance) + '):';
+  document.getElementById('cd-pay-amt').value = '';
+  document.getElementById('cd-pay-amt').max = saleId === 'all' ? '' : balance;
+  document.getElementById('cd-pay-amt').focus();
+}
+
 function cdSelMethod(el, m) {
   el.closest('.pay-method-grid').querySelectorAll('.pmt-btn').forEach(function(b) { b.classList.remove('sel'); });
   el.classList.add('sel');
@@ -4077,15 +4134,32 @@ function cdRecordPayment() {
   var amt = parseFloat(document.getElementById('cd-pay-amt').value);
   if (isNaN(amt) || amt <= 0) { toast('Enter a valid amount', 'err'); return; }
   var da = document.getElementById('cd-debt-actions');
-  var ids = da._saleIds || [];
-  if (!ids.length) return;
+  var allIds = da._saleIds || [];
+  var debtSales = da._debtSales || [];
+  if (!allIds.length) return;
+
+  // Determine which sales to apply payment to
+  var targetIds;
+  if (!_cdSelectedSaleId || _cdSelectedSaleId === 'all') {
+    targetIds = allIds; // oldest first (server returns asc)
+  } else {
+    targetIds = [_cdSelectedSaleId];
+    // Cap amount at that sale's balance
+    var targetSale = debtSales.find(function(s) { return s.id === _cdSelectedSaleId; });
+    if (targetSale && amt > targetSale.balance) {
+      toast('Amount exceeds balance of ' + fmt(targetSale.balance) + ' for this sale', 'err');
+      return;
+    }
+  }
+
   var btn = document.getElementById('cd-pay-btn');
   btn.disabled = true; btn.textContent = 'Saving...';
   var today = new Date().toISOString().slice(0, 10);
   var method = _cdPayMethod;
   var custName = document.getElementById('cd-name').textContent;
   var prevBalance = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
-  dbGet('sales', '?id=in.(' + ids.join(',') + ')&order=date.asc').then(function(sales) {
+
+  dbGet('sales', '?id=in.(' + targetIds.join(',') + ')&order=date.asc').then(function(sales) {
     var rem = amt, ps = [];
     var totalProfitSwept = 0;
     sales.forEach(function(s) {
@@ -4096,20 +4170,15 @@ function cdRecordPayment() {
       var log = s.payment_log || [];
       log.push({amount: pay, method: method, date: today});
       ps.push(dbPatch('sales', {paid: newPaid, balance: newBal, payment_log: log}, '?id=eq.' + s.id));
-      // Calculate profit portion of this payment and sweep it
       var saleTotal = s.total || 0;
       var saleProfit = s.profit || 0;
       if (saleTotal > 0 && saleProfit > 0) {
-        var profitPortion = Math.round((pay / saleTotal) * saleProfit * 100) / 100;
-        totalProfitSwept += profitPortion;
+        totalProfitSwept += Math.round((pay / saleTotal) * saleProfit * 100) / 100;
       }
       rem -= pay;
     });
-    return Promise.all(ps).then(function() {
-      return totalProfitSwept;
-    });
+    return Promise.all(ps).then(function() { return totalProfitSwept; });
   }).then(function(profitSwept) {
-    // Sweep profit portion to Profit wallet
     if (profitSwept > 0) {
       return recordProfitSweep(method, profitSwept, today, 'debt-payment-' + custName, custName).then(function() {
         return profitSwept;
