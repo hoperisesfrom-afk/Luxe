@@ -643,7 +643,7 @@ function exportProfitLedger() {
           <div><label>Date</label><input id="sale-date" type="date"></div>
         </div>
         <div class="fr">
-          <div><label>Customer Phone (optional)</label><input id="sale-phone" placeholder="e.g. 0712 345 678" autocomplete="off"></div>
+          <div><label>Customer Phone (optional)</label><div style="display:flex;gap:8px;align-items:center;"><input id="sale-phone" placeholder="e.g. 0712 345 678" autocomplete="off" style="flex:1;"><button type="button" id="sale-phone-picker" onclick="pickContact('sale-phone')" style="display:none;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:8px 10px;color:var(--gold);font-size:16px;cursor:pointer;white-space:nowrap;">&#128101;</button></div></div>
           <div></div>
         </div>
       </div>
@@ -901,7 +901,7 @@ function exportProfitLedger() {
               <div style="font-size:13px;font-weight:700;color:var(--t2);">Recycle Bin</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Deleted items &amp; sales</div>
             </button>
-            <button onclick="window.open('activity-report.html', '_blank')" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
+            <button onclick="showActivityReport()" style="background:var(--s2);border:1px solid var(--b);border-radius:var(--r);padding:20px 12px;cursor:pointer;text-align:center;">
               <div style="font-size:28px;margin-bottom:8px;">&#128200;</div>
               <div style="font-size:13px;font-weight:700;color:var(--t);">Activity Report</div>
               <div style="font-size:11px;color:var(--t2);margin-top:4px;">Cash flow &amp; running balance</div>
@@ -1040,7 +1040,10 @@ function exportProfitLedger() {
         <span id="cd-phone-display" style="font-size:13px;color:var(--t);font-weight:600;">—</span>
       </div>
       <div id="cd-phone-edit-wrap" style="display:none;">
-        <input type="tel" id="cd-phone-input" placeholder="e.g. 0712 345 678" style="margin-bottom:8px;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+          <input type="tel" id="cd-phone-input" placeholder="e.g. 0712 345 678" style="flex:1;">
+          <button type="button" id="cd-phone-picker" onclick="pickContact('cd-phone-input')" style="display:none;background:var(--s3);border:1px solid var(--b);border-radius:var(--rs);padding:8px 10px;color:var(--gold);font-size:16px;cursor:pointer;">&#128101;</button>
+        </div>
         <div style="display:flex;gap:8px;">
           <button class="btn bp bsm" onclick="saveCustomerPhone()" style="flex:1;">💾 Save</button>
           <button class="btn bsm" onclick="togglePhoneEdit()" style="flex:1;">Cancel</button>
@@ -1581,6 +1584,10 @@ function renderInv() {
     html += '<button class="btn bsm bok-btn" onclick="quickRestock(' + i.id + ')" style="flex:1;">+ Restock</button>';
     html += '<button class="btn bsm bd" onclick="delItem(' + i.id + ')" style="flex:1;">Remove</button></div>';
     html += '<div class="edit-panel" id="ep-' + i.id + '">';
+    html += '<div class="g12"><label>Item Name</label><input id="en-' + i.id + '" type="text" value="' + escHtml(i.name) + '"></div>';
+    html += '<div class="g12"><label>Category</label><select id="ec-' + i.id + '">'
+      + ['Jewelry','Beauty','Fashion','Fragrance','Accessories','Other'].map(function(c){return '<option value="'+c+'"'+(((i.category||'Other')===c)?' selected':'')+'>'+c+'</option>';}).join('')
+      + '</select></div>';
     html += '<div class="g12"><label>Selling Price</label><input id="es-' + i.id + '" type="number" value="' + i.selling_price + '"></div>';
     html += '<div class="g12"><label>Buying Price</label><input id="eb-' + i.id + '" type="number" value="' + i.buying_price + '"></div>';
     html += '<div class="g12"><label>Add More Stock</label><input id="eq-' + i.id + '" type="number" placeholder="0" min="0"></div>';
@@ -1595,13 +1602,16 @@ function toggleEdit(id) {
 }
 
 function saveEdit(id) {
+  var name = document.getElementById('en-' + id).value.trim();
+  var cat = document.getElementById('ec-' + id).value;
   var sell = parseFloat(document.getElementById('es-' + id).value);
   var buy = parseFloat(document.getElementById('eb-' + id).value);
   var addQ = parseInt(document.getElementById('eq-' + id).value) || 0;
+  if (!name) { toast('Item name cannot be empty', 'err'); return; }
   if (isNaN(sell) || isNaN(buy)) { toast('Enter valid prices', 'err'); return; }
   var item = inv.find(function(i) { return i.id === id; });
-  dbPatch('inventory', {selling_price: sell, buying_price: buy, qty: item.qty + addQ, remaining: item.remaining + addQ}, '?id=eq.' + id)
-    .then(function() { toast('Updated', 'ok'); loadInv(); })
+  dbPatch('inventory', {name: name, category: cat, selling_price: sell, buying_price: buy, qty: item.qty + addQ, remaining: item.remaining + addQ}, '?id=eq.' + id)
+    .then(function() { toast('Updated ✓', 'ok'); loadInv(); })
     .catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
 }
 
@@ -2310,6 +2320,9 @@ function returnSale(id) {
     customer_name: sale.customer_name,
     items: sale.items,
     total: sale.total,
+    paid: sale.paid || 0,
+    balance: sale.balance || 0,
+    method: sale.method || 'Cash',
     date: today,
     reason: reason||''
   }));
@@ -4197,26 +4210,71 @@ function cdRecordPayment() {
 
 function cdMarkFullyPaid() {
   var da = document.getElementById('cd-debt-actions');
+  var custName = document.getElementById('cd-name').textContent;
+  var balance = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
+
+  var existing = document.getElementById('cd-fullypaid-panel');
+  if (existing) { existing.remove(); return; }
+
+  var panel = document.createElement('div');
+  panel.id = 'cd-fullypaid-panel';
+  panel.style.cssText = 'margin-top:10px;padding:12px;background:var(--s1);border:1px solid var(--gold);border-radius:var(--rs);';
+  panel.innerHTML =
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:8px;">Clearing full balance of <strong style="color:var(--gold);">' + fmt(balance) + '</strong> — select method:</div>' +
+    '<div class="pay-method-grid" id="cd-fullypaid-methods">' +
+      '<div class="pmt-btn sel" onclick="cdFpSelMethod(this,\'Cash\')">Cash</div>' +
+      '<div class="pmt-btn" onclick="cdFpSelMethod(this,\'M-Pesa\')">M-Pesa</div>' +
+      '<div class="pmt-btn" onclick="cdFpSelMethod(this,\'Card\')">Card</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:10px;">' +
+      '<button class="btn bsm" onclick="document.getElementById(\'cd-fullypaid-panel\').remove()" style="flex:1;background:var(--s2);color:var(--t2);border-color:var(--b);">Cancel</button>' +
+      '<button class="btn bsm bok-btn" id="cd-fp-confirm-btn" onclick="cdConfirmFullyPaid()" style="flex:2;">&#10003; Confirm All Paid</button>' +
+    '</div>';
+  da.appendChild(panel);
+  window._cdFpMethod = 'Cash';
+}
+
+function cdFpSelMethod(el, m) {
+  el.closest('#cd-fullypaid-methods').querySelectorAll('.pmt-btn').forEach(function(b) { b.classList.remove('sel'); });
+  el.classList.add('sel');
+  window._cdFpMethod = m;
+}
+
+function cdConfirmFullyPaid() {
+  var da = document.getElementById('cd-debt-actions');
   var ids = da._saleIds || [];
   var custName = document.getElementById('cd-name').textContent;
   var balance = _cdSales.reduce(function(s, x) { return s + (x.balance || 0); }, 0);
-  if (!confirm('Mark ' + custName + ' as fully paid?\nTotal cleared: ' + fmt(balance))) return;
-  // Ask for method
-  var method = 'Cash';
-  var pick = prompt('Payment method? Type: Cash, M-Pesa, or Card', 'Cash');
-  if (pick) method = pick.trim();
+  var method = window._cdFpMethod || 'Cash';
   var today = new Date().toISOString().slice(0, 10);
+  var btn = document.getElementById('cd-fp-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
   dbGet('sales', '?id=in.(' + ids.join(',') + ')').then(function(sales) {
+    var totalProfit = 0;
     var ps = sales.map(function(s) {
       var log = s.payment_log || [];
-      if (s.balance > 0) log.push({amount: s.balance, method: method, date: today});
+      if ((s.balance || 0) > 0) {
+        log.push({amount: s.balance, method: method, date: today});
+        if ((s.profit || 0) > 0 && (s.total || 0) > 0) {
+          totalProfit += Math.round((s.balance / s.total) * s.profit * 100) / 100;
+        }
+      }
       return dbPatch('sales', {paid: s.total, balance: 0, payment_log: log}, '?id=eq.' + s.id);
     });
-    return Promise.all(ps);
+    return Promise.all(ps).then(function() { return totalProfit; });
+  }).then(function(totalProfit) {
+    if (totalProfit > 0) {
+      return recordProfitSweep(method, totalProfit, today, 'debt-payment-' + custName, custName);
+    }
   }).then(function() {
     allCustomerSales = []; loadCustomers(); closeCustDetail();
     showDebtReceipt(custName, balance, method, balance, 0, today, true);
-  }).catch(function(e) { var msg = e && e.message ? e.message : String(e || 'Unknown error'); toast('Error: ' + msg, 'err'); console.error('Error: ', e); });
+  }).catch(function(e) {
+    var msg = e && e.message ? e.message : String(e || 'Unknown error');
+    toast('Error: ' + msg, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = '\u2713 Confirm All Paid'; }
+  });
 }
 
 
@@ -4230,7 +4288,12 @@ function togglePhoneEdit() {
   var isEditing = wrap.style.display === 'block';
   wrap.style.display = isEditing ? 'none' : 'block';
   actions.style.display = isEditing ? 'flex' : 'none';
-  if (!isEditing) document.getElementById('cd-phone-input').focus();
+  if (!isEditing) {
+    document.getElementById('cd-phone-input').focus();
+    // Show contact picker if supported
+    var cp = document.getElementById('cd-phone-picker');
+    if (cp && 'contacts' in navigator && 'ContactsManager' in window) cp.style.display = 'block';
+  }
 }
 
 function getOverdueReminderText(name, balance, daysOverdue) {
@@ -5161,6 +5224,28 @@ if (typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY_HE
   emailjs.init({publicKey: EMAILJS_PUBLIC_KEY});
 }
 
+async function pickContact(targetInputId) {
+  if (!('contacts' in navigator && 'ContactsManager' in window)) {
+    toast('Contact picker not supported on this browser', 'err');
+    return;
+  }
+  try {
+    var contacts = await navigator.contacts.select(['tel'], {multiple: false});
+    if (!contacts || !contacts.length || !contacts[0].tel || !contacts[0].tel.length) return;
+    var number = contacts[0].tel[0].replace(/\s+/g, '');
+    document.getElementById(targetInputId).value = number;
+  } catch(e) {
+    if (e.name !== 'AbortError') toast('Could not pick contact', 'err');
+  }
+}
+
+function initContactPickers() {
+  if ('contacts' in navigator && 'ContactsManager' in window) {
+    var sp = document.getElementById('sale-phone-picker');
+    if (sp) sp.style.display = 'block';
+  }
+}
+
 function initApp() {
   if (!authToken) {
     // Not authenticated — show login
@@ -5175,6 +5260,7 @@ function initApp() {
   // Backfill missing receipt refs and profit for old sales
   backfillReceiptRefs();
   backfillSalesProfit();
+  initContactPickers();
 }
 
 // ── Startup: check for saved session ──
@@ -5689,6 +5775,325 @@ document.addEventListener('visibilitychange', function() {
 
 
 // ══ RESTORE BACKUP SYSTEM ══
+// ═══════════════════════════════════════════════════════════════
+// ══ ACTIVITY REPORT ══
+// ═══════════════════════════════════════════════════════════════
+
+var _arData = null;
+
+function showActivityReport() {
+  var modal = document.getElementById('activity-report-modal');
+  modal.classList.add('on');
+  // Build month selector if empty
+  var sel = document.getElementById('ar-month-sel');
+  if (!sel.options.length) {
+    var now = new Date();
+    var allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = 'Pick month...';
+    sel.appendChild(allOpt);
+    for (var i = 0; i < 24; i++) {
+      var d2 = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      var val = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0');
+      var label = d2.toLocaleDateString('en-KE', {month:'long', year:'numeric'});
+      var opt = document.createElement('option');
+      opt.value = val; opt.textContent = label;
+      if (i === 0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  onArMonthChange();
+}
+
+function getArRange() {
+  var sel = document.getElementById('ar-month-sel');
+  var from = document.getElementById('ar-from').value;
+  var to = document.getElementById('ar-to').value;
+  if (from && to) return {from: from, to: to};
+  if (sel.value) {
+    var y = parseInt(sel.value.split('-')[0]);
+    var m = parseInt(sel.value.split('-')[1]) - 1;
+    var first = new Date(y, m, 1);
+    var last = new Date(y, m+1, 0);
+    return {
+      from: first.toISOString().slice(0,10),
+      to: last.toISOString().slice(0,10)
+    };
+  }
+  return {from: '2000-01-01', to: new Date().toISOString().slice(0,10)};
+}
+
+function onArMonthChange() {
+  document.getElementById('ar-from').value = '';
+  document.getElementById('ar-to').value = '';
+  loadArData();
+}
+
+function onArDateChange() {
+  document.getElementById('ar-month-sel').value = '';
+  loadArData();
+}
+
+function clearArFilter() {
+  document.getElementById('ar-month-sel').value = '';
+  document.getElementById('ar-from').value = '';
+  document.getElementById('ar-to').value = '';
+  loadArData();
+}
+
+function loadArData() {
+  var el = document.getElementById('ar-body');
+  el.innerHTML = '<div class="empty">Loading...</div>';
+  var range = getArRange();
+  var from = range.from;
+  var to = range.to;
+  document.getElementById('ar-subtitle').textContent = from === '2000-01-01' ? 'All time' : from + ' → ' + to;
+
+  Promise.all([
+    dbGet('sales', '?order=date.asc'),
+    dbGet('deductions', '?order=date.asc'),
+    dbGet('transfers', '?order=date.asc'),
+    dbGet('returns', '?order=date.asc')
+  ]).then(function(r) {
+    var allSales = r[0] || [], allDeds = r[1] || [], allTransfers = r[2] || [], allReturns = r[3] || [];
+
+    // Index returns by original_sale_id for quick lookup
+    var returnedSaleIds = {};
+    allReturns.forEach(function(ret) {
+      if (ret.original_sale_id) returnedSaleIds[ret.original_sale_id] = ret;
+    });
+
+    var events = [];
+
+    // ── Sales ──
+    allSales.forEach(function(s) {
+      var isReturned = (s.method || '').indexOf('Returned') >= 0;
+      if (isReturned) return; // handled via returns table below
+      var items = (s.items || []).map(function(i){ return i.qty + 'x ' + i.name; }).join(', ');
+      events.push({
+        date: s.date,
+        type: 'sale',
+        title: s.customer_name,
+        detail: items + (s.receipt_ref ? ' | ' + s.receipt_ref : ''),
+        wallet: s.method || 'Cash',
+        cashIn: s.paid || 0,
+        cashOut: 0,
+        creditChange: s.balance || 0
+      });
+    });
+
+    // ── Returns (correct credit-aware logic) ──
+    allReturns.forEach(function(ret) {
+      var items = (ret.items || []).map(function(i){ return i.qty + 'x ' + i.name; }).join(', ');
+      var wasCash = (ret.paid || 0) > 0;
+      var wasCredit = (ret.balance || 0) > 0;
+      // Cash portion refunded
+      var cashRefund = ret.paid || 0;
+      // Credit portion cancelled (no cash ever received)
+      var creditCancelled = -(ret.balance || 0);
+
+      events.push({
+        date: ret.date,
+        type: 'return',
+        title: ret.customer_name || '',
+        detail: items + (ret.reason ? ' | ' + ret.reason : ''),
+        wallet: wasCash ? (ret.method || 'Cash') : 'No Refund (Credit)',
+        cashIn: 0,
+        cashOut: cashRefund,       // Only refund cash that was actually paid
+        creditChange: creditCancelled  // Cancel outstanding debt
+      });
+    });
+
+    // ── Deductions / Capital ──
+    allDeds.forEach(function(d) {
+      var isInj = d.type === 'injection';
+      events.push({
+        date: d.date,
+        type: isInj ? 'capital' : 'expense',
+        title: (isInj ? '+ Capital: ' : '- Expense: ') + (d.reason || ''),
+        detail: (d.category || '') + (d.wallet ? ' | ' + d.wallet : ''),
+        wallet: d.wallet || 'Cash',
+        cashIn: isInj ? (d.amount || 0) : 0,
+        cashOut: isInj ? 0 : (d.amount || 0),
+        creditChange: 0
+      });
+    });
+
+    // ── Transfers ──
+    allTransfers.forEach(function(t) {
+      var isProfitSweep = (t.to_wallet || '') === 'Profit';
+      events.push({
+        date: t.date || new Date().toISOString().slice(0,10),
+        type: isProfitSweep ? 'profit' : 'transfer',
+        title: (t.from_wallet || '?') + ' → ' + (t.to_wallet || '?'),
+        detail: t.note || '',
+        wallet: t.from_wallet || '',
+        cashIn: 0,
+        cashOut: isProfitSweep ? 0 : 0,  // Transfers are internal, don't affect cash balance
+        creditChange: 0,
+        transferAmt: t.amount || 0,
+        isProfitSweep: isProfitSweep
+      });
+    });
+
+    // Sort by date
+    events.sort(function(a, b) { return a.date.localeCompare(b.date); });
+
+    // Running totals
+    var runningCash = 0, runningCredit = 0, runningProfit = 0;
+    var totalCashIn = 0, totalCashOut = 0;
+
+    events.forEach(function(e) {
+      runningCash += e.cashIn - e.cashOut;
+      runningCredit += e.creditChange;
+      if (runningCredit < 0) runningCredit = 0;
+      if (e.isProfitSweep) runningProfit += e.transferAmt || 0;
+      e.balanceAfter = runningCash;
+      e.creditAfter = runningCredit;
+      e.netAfter = runningCash + runningCredit;
+      totalCashIn += e.cashIn;
+      totalCashOut += e.cashOut;
+    });
+
+    var finalCredit = allSales.reduce(function(s,x){ return s + Math.max(0, x.balance||0); }, 0);
+
+    _arData = {
+      events: events, from: from, to: to,
+      totalCashIn: totalCashIn, totalCashOut: totalCashOut,
+      finalBalance: runningCash, finalCredit: finalCredit,
+      finalNet: runningCash + finalCredit, finalProfit: runningProfit
+    };
+
+    // Filter for display
+    var display = events.filter(function(e){ return e.date >= from && e.date <= to; });
+
+    document.getElementById('ar-stat-in').textContent = fmt(totalCashIn);
+    document.getElementById('ar-stat-out').textContent = fmt(totalCashOut);
+    document.getElementById('ar-stat-credit').textContent = fmt(finalCredit);
+    document.getElementById('ar-stat-net').textContent = fmt(runningCash + finalCredit);
+
+    if (!display.length) {
+      el.innerHTML = '<div class="empty" style="padding:40px">No transactions for this period</div>';
+      return;
+    }
+
+    var html = '';
+    var lastDate = '';
+    display.forEach(function(e) {
+      var dateStr = e.date;
+      try { dateStr = new Date(e.date+'T12:00:00').toLocaleDateString('en-KE',{day:'numeric',month:'short'}); } catch(x) {}
+      var showDate = e.date !== lastDate; lastDate = e.date;
+
+      var color = e.type==='expense'||e.type==='return' ? 'var(--err)' :
+                  e.type==='capital' ? 'var(--ok)' :
+                  e.type==='profit' ? 'var(--gold)' : 'var(--t)';
+      var icon = e.type==='sale' ? '🛍' : e.type==='return' ? '↩' :
+                 e.type==='expense' ? '💸' : e.type==='capital' ? '💰' :
+                 e.type==='profit' ? '🏦' : '⇄';
+      var inStr = e.cashIn > 0 ? '+' + fmt(e.cashIn) : '';
+      var outStr = e.cashOut > 0 ? '-' + fmt(e.cashOut) : '';
+      if (e.type==='transfer'||e.type==='profit') {
+        inStr = ''; outStr = fmt(e.transferAmt||0) + ' →';
+      }
+
+      html += '<div style="display:grid;grid-template-columns:75px 1fr 75px 75px 85px 75px;gap:6px;align-items:start;padding:10px 14px;border-bottom:1px solid var(--b3);font-size:12px;' + (e.type==='return'?'background:rgba(224,96,96,.05);':'') + '">';
+      html += '<div style="color:var(--t2);font-size:11px;">' + (showDate ? dateStr : '') + '</div>';
+      html += '<div><div style="font-weight:600;color:' + color + ';">' + icon + ' ' + escHtml(e.title) + '</div>';
+      if (e.detail) html += '<div style="font-size:10px;color:var(--t2);margin-top:2px;">' + escHtml(e.wallet) + (e.detail ? ' · ' + escHtml(e.detail) : '') + '</div>';
+      html += '</div>';
+      html += '<div style="text-align:right;color:var(--ok);font-weight:700;">' + inStr + '</div>';
+      html += '<div style="text-align:right;color:var(--err);font-weight:700;">' + outStr + '</div>';
+      html += '<div style="text-align:right;color:var(--gold);font-weight:800;">' + fmt(e.balanceAfter) + '</div>';
+      html += '<div style="text-align:right;color:var(--t);font-weight:700;">' + fmt(e.netAfter) + '</div>';
+      html += '</div>';
+    });
+
+    // Totals row
+    html += '<div style="display:grid;grid-template-columns:75px 1fr 75px 75px 85px 75px;gap:6px;padding:12px 14px;background:var(--s3);border-top:2px solid var(--b2);font-size:12px;font-weight:800;">';
+    html += '<div></div><div style="color:var(--t2);">All Time Totals</div>';
+    html += '<div style="text-align:right;color:var(--ok);">+' + fmt(totalCashIn) + '</div>';
+    html += '<div style="text-align:right;color:var(--err);">-' + fmt(totalCashOut) + '</div>';
+    html += '<div style="text-align:right;color:var(--gold);">' + fmt(runningCash) + '</div>';
+    html += '<div style="text-align:right;color:var(--t);">' + fmt(runningCash + finalCredit) + '</div>';
+    html += '</div>';
+    if (finalCredit > 0) {
+      html += '<div style="padding:10px 14px;background:var(--err-bg);font-size:12px;color:var(--err);">📋 Outstanding credit (not yet collected): ' + fmt(finalCredit) + '</div>';
+    }
+
+    el.innerHTML = html;
+  }).catch(function(e) {
+    el.innerHTML = '<div class="empty">Error loading data</div>';
+    console.error('Activity report error:', e);
+  });
+}
+
+function arExportCSV() {
+  var d = _arData;
+  if (!d || !d.events.length) { toast('Load data first', 'err'); return; }
+
+  var rows = [
+    ['LIZ LUXE — ACTIVITY REPORT'],
+    ['Period: ' + d.from + ' to ' + d.to],
+    [],
+    ['Date','Type','Description','Wallet/Detail','Cash In (KES)','Cash Out (KES)','Cash Balance (KES)','Credit Change (KES)','Net Value (KES)']
+  ];
+
+  d.events.forEach(function(e) {
+    var inAmt = e.type==='transfer'||e.type==='profit' ? '' : (e.cashIn||'');
+    var outAmt = e.type==='transfer'||e.type==='profit' ? (e.transferAmt||'') : (e.cashOut||'');
+    rows.push([e.date, e.type, e.title, (e.wallet||'') + (e.detail?' | '+e.detail:''), inAmt, outAmt, e.balanceAfter, e.creditChange||'', e.netAfter]);
+  });
+  rows.push([]);
+  rows.push(['','','','TOTALS', d.totalCashIn, d.totalCashOut, d.finalBalance, '', d.finalNet]);
+
+  function escXml(v) { return String(v===null||v===undefined?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles><Style ss:ID="H"><Font ss:Bold="1" ss:Size="14" ss:Color="#C9972A"/></Style><Style ss:ID="B"><Font ss:Bold="1"/></Style></Styles><Worksheet ss:Name="Activity Report"><Table>';
+  rows.forEach(function(row, ri) {
+    if (!row.length) { xml += '<Row></Row>'; return; }
+    xml += '<Row>';
+    row.forEach(function(cell) {
+      var style = ri===0?' ss:StyleID="H"':ri===3?' ss:StyleID="B"':'';
+      var val = cell===null||cell===undefined?'':cell;
+      var type = typeof val==='number'||(typeof val==='string'&&val!==''&&!isNaN(Number(val))&&String(val).trim()!=='') ? 'Number' : 'String';
+      if (type==='Number'&&val==='') type='String';
+      xml += '<Cell'+style+'><Data ss:Type="'+type+'">'+escXml(val)+'</Data></Cell>';
+    });
+    xml += '</Row>';
+  });
+  xml += '</Table></Worksheet></Workbook>';
+  var blob = new Blob([xml], {type:'application/vnd.ms-excel;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'LizLuxe-Activity-'+d.from+'_to_'+d.to+'.xls';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported ✓', 'ok');
+}
+
+function arShareWhatsApp() {
+  var d = _arData;
+  if (!d || !d.events.length) { toast('Load data first', 'err'); return; }
+  var nl = String.fromCharCode(10);
+  var dateStr = d.from === '2000-01-01' ? 'All time' : (d.from === d.to ? d.from : d.from + ' to ' + d.to);
+  var sales = d.events.filter(function(e){return e.type==='sale';});
+  var returns = d.events.filter(function(e){return e.type==='return';});
+  var msg = '🌟 *LIZ LUXE — Activity Report*' + nl;
+  msg += '📅 ' + dateStr + nl + nl;
+  msg += '📊 *SALES* (' + sales.length + ' transactions)' + nl;
+  msg += '• Total Collected: ' + fmt(d.totalCashIn) + nl;
+  msg += '• Credit Outstanding: ' + fmt(d.finalCredit) + nl;
+  if (returns.length) msg += '• Returns: ' + returns.length + ' (' + fmt(returns.reduce(function(s,e){return s+e.cashOut;},0)) + ' refunded)' + nl;
+  msg += nl;
+  msg += '💵 *CASH POSITION*' + nl;
+  msg += '• Cash Balance: ' + fmt(d.finalBalance) + nl;
+  msg += '• Net Value (incl. credit): ' + fmt(d.finalNet) + nl;
+  if (d.finalProfit > 0) msg += '• Profit Swept: ' + fmt(d.finalProfit) + nl;
+  msg += nl + '✨ _Liz Luxe POS_';
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+
+// ═══════════════════════════════════════════════════════════════
+
 var _restoreData = null;
 
 function showRestoreModal() {
@@ -6605,6 +7010,56 @@ function exportProfitLedger() {
   </div>
   <div class="edit-items-body" id="profit-ledger-body">
     <div class="empty">Loading...</div>
+  </div>
+</div>
+<!-- ══ ACTIVITY REPORT MODAL ══ -->
+<div class="edit-items-modal" id="activity-report-modal">
+  <div style="background:var(--s2);border-bottom:1px solid var(--b);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button onclick="document.getElementById('activity-report-modal').classList.remove('on')" style="background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;">&#8592;</button>
+      <div>
+        <div style="font-weight:700;font-size:16px;">Activity Report</div>
+        <div style="font-size:11px;color:var(--t2);" id="ar-subtitle">Cash flow &amp; running balance</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="arExportCSV()" style="background:var(--gold);color:#0a0a0a;border:none;border-radius:var(--rs);padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;">&#128229; Export</button>
+      <button onclick="arShareWhatsApp()" style="background:#25d366;color:#fff;border:none;border-radius:var(--rs);padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;">&#128232; Share</button>
+    </div>
+  </div>
+  <!-- Filters -->
+  <div style="padding:12px 16px;background:var(--s1);border-bottom:1px solid var(--b);display:flex;gap:8px;align-items:center;flex-shrink:0;">
+    <select id="ar-month-sel" onchange="onArMonthChange()" style="flex:1;padding:8px;background:var(--s2);color:var(--t);border:1px solid var(--b);border-radius:var(--rs);font-size:13px;"></select>
+    <input type="date" id="ar-from" onchange="onArDateChange()" style="flex:1;padding:8px;background:var(--s2);color:var(--t);border:1px solid var(--b);border-radius:var(--rs);font-size:13px;">
+    <span style="color:var(--t2);font-size:12px;">to</span>
+    <input type="date" id="ar-to" onchange="onArDateChange()" style="flex:1;padding:8px;background:var(--s2);color:var(--t);border:1px solid var(--b);border-radius:var(--rs);font-size:13px;">
+    <button onclick="clearArFilter()" style="background:none;border:1px solid var(--b);border-radius:var(--rs);color:var(--t2);padding:8px 10px;font-size:12px;cursor:pointer;">All</button>
+  </div>
+  <!-- Summary cards -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 16px;background:var(--s1);border-bottom:1px solid var(--b);flex-shrink:0;">
+    <div style="text-align:center;">
+      <div style="font-size:13px;font-weight:700;color:var(--ok);" id="ar-stat-in">KES 0</div>
+      <div style="font-size:10px;color:var(--t2);margin-top:2px;">Cash In</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:13px;font-weight:700;color:var(--err);" id="ar-stat-out">KES 0</div>
+      <div style="font-size:10px;color:var(--t2);margin-top:2px;">Cash Out</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:13px;font-weight:700;color:#ff9800;" id="ar-stat-credit">KES 0</div>
+      <div style="font-size:10px;color:var(--t2);margin-top:2px;">Credit Owed</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:13px;font-weight:700;color:var(--gold);" id="ar-stat-net">KES 0</div>
+      <div style="font-size:10px;color:var(--t2);margin-top:2px;">Net Value</div>
+    </div>
+  </div>
+  <!-- Table -->
+  <div style="overflow-x:auto;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+    <div style="display:grid;grid-template-columns:75px 1fr 75px 75px 85px 75px;gap:6px;padding:8px 14px;background:var(--s3);border-bottom:1px solid var(--b);font-size:10px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:.04em;min-width:500px;position:sticky;top:0;z-index:5;">
+      <div>Date</div><div>Event</div><div style="text-align:right">In</div><div style="text-align:right">Out</div><div style="text-align:right">Balance</div><div style="text-align:right">Net</div>
+    </div>
+    <div id="ar-body" style="min-width:500px;"><div class="empty">Loading...</div></div>
   </div>
 </div>
 
