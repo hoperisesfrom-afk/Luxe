@@ -6043,7 +6043,9 @@ function arExportCSV() {
     rows.push([e.date, e.type, e.title, (e.wallet||'') + (e.detail?' | '+e.detail:''), inAmt, outAmt, e.balanceAfter, e.creditChange||'', e.netAfter]);
   });
   rows.push([]);
-  rows.push(['','','','TOTALS', d.totalCashIn, d.totalCashOut, d.finalBalance, '', d.finalNet]);
+  rows.push(['','','','TOTALS', d.totalCashIn, d.totalCashOut, d.finalBalance, d.finalCredit, d.finalNet]);
+  rows.push([]);
+  rows.push(['','','','Credit Owed (Outstanding)','','','',d.finalCredit,'']);
 
   function escXml(v) { return String(v===null||v===undefined?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   var xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles><Style ss:ID="H"><Font ss:Bold="1" ss:Size="14" ss:Color="#C9972A"/></Style><Style ss:ID="B"><Font ss:Bold="1"/></Style></Styles><Worksheet ss:Name="Activity Report"><Table>';
